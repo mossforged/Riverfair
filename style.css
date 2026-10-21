@@ -721,3 +721,22 @@ body.t-riverfair:not(.on-home) .board{box-shadow:0 0 0 1px rgba(201,162,74,.6),0
 #coach .co-r{display:flex;gap:12px;align-items:center}
 #coach .co-mus{text-decoration:none;border:1px solid #d8c08a;border-radius:999px;padding:2px 9px;background:#fffaf0}
 #coach .co-mus[aria-pressed="true"]{background:#3d6b45;border-color:#2c4f33;color:#fffaf0}
+/* ================= big screens: let the board grow, but keep the whole board in view ================= */
+@media (min-width:900px){
+  .board{--bw:calc(4 / (4 * 1.08));width:100%;max-width:calc((100dvh - 150px) * var(--bw));min-width:min(100%,560px);justify-self:center}
+  .board.x5{--bw:calc(5 / (4 * 1.08))}
+}
+@media (min-width:1400px){
+  .wrap{max-width:2000px;padding-inline:28px}
+  .main{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:20px}
+  .t-riverfair .board{padding:12px;gap:9px}
+  .tile{--sh:92px;padding:7px 7px 6px}
+  .tile .nm{font-size:18px}
+  .tile .st{font-size:13px}
+  .tile .pn{min-width:20px;height:20px;font-size:12px}
+  .tile .hint{font-size:12.5px;padding:3px 7px}
+  .tile .plate img.gi{width:20px;height:20px}
+  .tile .ast.icon,.tile .fam.icon{width:21px;height:21px}
+  .tile .again{font-size:12px;padding:4px 3px}
+}
+@media (min-width:2200px){.tile{--sh:110px}.tile .nm{font-size:21px}.tile .st{font-size:15px}.tile .plate img.gi{width:24px;height:24px}}

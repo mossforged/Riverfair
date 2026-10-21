@@ -105,6 +105,7 @@ Read this first. It records what the game is, how the code is laid out, the deci
 - **Layout:**
   - The main game layout stays as it is. A one-screen dashboard redesign was considered and declined; only the painted table background was adopted.
   - The isometric/3D board was considered and declined, since it hurts readability.
+  - On desktop (900px+) the board is capped to the screen height so the whole board is always in view (`--bw` in `style.css`). From 1400px the page widens to 2000px, the board column gets more room, and tile text, icons and standees grow (bigger again from 2200px). Phones are unchanged.
 - **Title screen text:** tagline *Where small folk make their fortunes*, headline *Fill your cart. Earn your feathers.*
 - **Rules and components:**
   - Market demand tiles, the Envoy track start (5 goods with 2–3 players, 4 with 4–5) and Glimmer's prices (15/14/12 by player count) match the printed components.
