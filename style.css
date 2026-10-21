@@ -697,3 +697,24 @@ body.t-riverfair:not(.on-home) .card,body.t-riverfair:not(.on-home) .banner{box-
 body.t-riverfair:not(.on-home) .board{box-shadow:0 0 0 1px rgba(201,162,74,.6),0 14px 34px rgba(10,5,0,.6),inset 0 1px 0 rgba(255,255,255,.18)}
 /* phones: no fixed backgrounds (they jitter on mobile scroll) */
 @media (max-width:760px){body.t-riverfair:not(.on-home){background-attachment:scroll;background-size:auto 100vh;background-position:center top;background-repeat:repeat-y}}
+/* ================= guided tutorial: coach card and spotlight ================= */
+#coach{position:fixed;z-index:18;left:50%;transform:translateX(-50%);bottom:calc(var(--dock-h,0px) + 12px);width:min(440px,calc(100% - 24px));
+  background:linear-gradient(to bottom,#fbf3df,#f6ecd4 60%,#ecdcb8);color:#2b1f14;border:2px solid #c9a24a;border-radius:16px;
+  box-shadow:0 14px 40px rgba(30,18,8,.38),inset 0 0 0 1px rgba(255,255,255,.5);padding:12px 16px 14px}
+#coach.at-top{bottom:auto;top:calc(10px + env(safe-area-inset-top,0px))}
+@media (min-width:900px){#coach{left:auto;right:24px;transform:none;bottom:24px}#coach.at-top{top:84px}}
+#coach .co-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#coach .co-step{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8c4a2a}
+#coach .co-skip{background:none;border:0;padding:4px 0;font:inherit;font-size:12px;font-weight:700;color:#6d5a45;text-decoration:underline;cursor:pointer}
+#coach .co-bar{height:4px;border-radius:2px;background:#e3d1a8;margin:6px 0 8px;overflow:hidden}
+#coach .co-bar i{display:block;height:100%;background:#3d6b45;border-radius:2px;transition:width .3s}
+#coach h3{font-family:var(--f-display);font-size:20px;margin:0 0 4px;color:#2b1f14;line-height:1.15}
+#coach p{margin:0 0 6px;font-size:14.5px;line-height:1.42}
+#coach .co-btns{display:flex;justify-content:flex-end;margin-top:8px}
+#coach .co-btns .btn.primary{background:linear-gradient(to bottom,#4f8a59,#3d6b45);color:#fffaf0;border-color:#2c4f33;min-width:110px}
+#coach .co-do{margin:6px 0 0;font-size:12.5px;font-weight:700;color:#8c4a2a;font-style:italic}
+#coach .gi{width:1.1em;height:1.1em;vertical-align:-2px}
+.tut-spot{outline:3px solid #e0a526!important;outline-offset:2px;border-radius:10px}
+.tile.tut-spot{opacity:1!important;filter:none!important;box-shadow:inset 0 0 0 3px #e0a526,0 0 0 4px rgba(224,165,38,.45)!important}
+@media (prefers-reduced-motion:no-preference){.tut-spot{animation:tutGlow 1.4s ease-in-out infinite}@keyframes tutGlow{50%{outline-color:#fff1b8;outline-offset:5px}}}
+.hm-card .hm-learn{border-style:dashed}

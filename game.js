@@ -34,6 +34,7 @@ const PREVIEW=(()=>{const q=new URLSearchParams(location.search);try{if(q.has('p
 const ABORT={abort:true};
 const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;
 let G=null, GEN=0;
+let TUT=null, SIMN=0; // guided tutorial state; SIMN>0 while the AI is simulating moves
 let UI={phase:'idle',sel:null,mode:'normal',busy:false};
 let pendingMove=null, pendingEnd=null;
 let TURN={snap:null,rng:-1};
@@ -42,7 +43,7 @@ let TURN={snap:null,rng:-1};
 let RNG_N=0; // counts every random draw; undo is only offered while it hasn't changed
 const rnd=n=>{RNG_N++;return Math.floor(Math.random()*n);};
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=rnd(i+1);[a[i],a[j]]=[a[j],a[i]];}return a;}
-const roll2=()=>[1+rnd(6),1+rnd(6)];
+const roll2=()=>(TUT&&TUT.dice&&TUT.dice.length&&!SIMN)?TUT.dice.shift().slice():[1+rnd(6),1+rnd(6)]; // the tutorial can line up its dice
 const rollSum=()=>{const d=roll2();return d[0]+d[1];};
 const cap=p=>2+p.ext;
 const cur=g=>g.players[g.current];
@@ -610,7 +611,7 @@ function evalPlayer(g,p){
 
 async function simulate(g,pi,target,mode){
   const C=clone(g);const p=C.players[pi];if(mode!=='normal')useCard(C,p,mode);
-  await resolveMove({G:C,sim:true,depth:1},target,mode);
+  SIMN++;try{await resolveMove({G:C,sim:true,depth:1},target,mode);}finally{SIMN--;}
   return evalPlayer(C,p);
 }
 async function rankMoves(g,p,modes){
@@ -621,6 +622,7 @@ async function rankMoves(g,p,modes){
 
 async function aiTurn(ctx){
   const g=ctx.G,p=cur(g);
+  if(g.tut&&TUT&&TUT.ai&&TUT.ai.length){const t=TUT.ai.shift();UI.sel=t;render();await sleep(ctx,550);await resolveMove(ctx,t,'normal');return;} // scripted rival moves in the tutorial
   while(hasCard(p,'lira5')){useCard(g,p,'lira5');p.lira+=5;log(ctx,`${p.name} plays “${CARD_DEFS.lira5.name}”.`,p);}
   if(hasCard(p,'family')&&p.family!==12){useCard(g,p,'family');p.family=12;p.lira+=3;log(ctx,`${p.name} calls the ${W.family} home and takes ${L(3)}.`,p);}
   if(hasCard(p,'good')){const room=GOODS.filter(c=>p.goods[c]<cap(p));if(room.length){const c=bestGood(g,p,room);if(need(g,p)[c]>0){useCard(g,p,'good');p.goods[c]++;log(ctx,`${p.name} plays “${CARD_DEFS.good.name}” for ${GNAME[c]}.`,p);}}}
@@ -722,7 +724,7 @@ async function humanDecide(ctx,p,kind,d){
   case 'sell':return sellSheet(p,d);
   case 'cardSource':return sheet(PNAME[6],`<p>Take ${W.card} ${d.n} of 2.</p>`,[{label:'Draw from the pile',value:'deck',primary:true},{label:`Take “${CARD_DEFS[d.top].name}” from the discards`,value:'discard'}]);
   case 'discardCard':return sheet(d.title||'Discard a card',`<p>Choose a ${W.card} to discard.</p>`,p.cards.map((c,i)=>({label:`${CARD_DEFS[c].name} <small>${CARD_DEFS[c].text}</small>`,value:i})));
-  case 'lodgeColor':return sheet(`Claim a ${W.tile}`,'<p>Pay 1 of the shown goods to take the tile.</p>',[...d.options.map(c=>({label:`${chip(c)} ${GNAME[c]} tile <small>${d.cheap?'':`needs ${G.lodge[c][0]} · `}${TILE_ABIL[c]}</small>`,value:c})),...(d.cheap?[]:[{label:'Skip',value:null}])]);
+  case 'lodgeColor':return sheet(`Claim a ${W.tile}`,'<p>Pay 1 of the shown goods to take the tile.</p>',[...d.options.map(c=>({label:`${chip(c)} ${GNAME[c]} tile <small>${d.cheap?'':`needs ${G.lodge[c][0]} · `}${TILE_ABIL[c]}</small>`,value:c})),...(d.cheap||tutScripted()?[]:[{label:'Skip',value:null}])]);
   case 'discardGuild':return sheet(d.title||`Discard a ${W.guildCard}`,`<p>Choose a ${W.guildCard} to discard.</p>`,p.guild.map((c,i)=>({label:`${guildName(c)} <small>${guildText(c)}</small>`,value:i})));
   case 'discardKind':return sheet(d.title,`<p>Give up a ${W.card} or a ${W.guildCard}?</p>`,[{label:`A ${W.card}`,value:'bonus',primary:true},{label:`A ${W.guildCard}`,value:'guild'}]);
   case 'payGoods':return payGoodsSheet(p,d);
@@ -848,9 +850,9 @@ async function gameLoop(){
     save();render();showEnd();
   }catch(e){if(e!==ABORT){console.error(e);toast('Something went wrong: '+e.message);}}
 }
-function save(){if(ON.code)return;try{localStorage.setItem(STORE,JSON.stringify(G));}catch(e){}}
-function startGame(cfg){leaveOnline();showScreen('table');GEN++;pendingMove=pendingEnd=null;G=newGame(cfg);UI={phase:'idle',sel:null,mode:'normal',busy:false};$('#sheetWrap').hidden=true;render();gameLoop();}
-function resumeGame(saved){leaveOnline();showScreen('table');GEN++;pendingMove=pendingEnd=null;G=upgradeState(saved);UI={phase:'idle',sel:null,mode:'normal',busy:false};$('#sheetWrap').hidden=true;render();if(G.over){UI.phase='over';render();}else gameLoop();}
+function save(){if(ON.code||(G&&G.tut))return;try{localStorage.setItem(STORE,JSON.stringify(G));}catch(e){}}
+function startGame(cfg){tutStop();leaveOnline();showScreen('table');GEN++;pendingMove=pendingEnd=null;G=newGame(cfg);UI={phase:'idle',sel:null,mode:'normal',busy:false};$('#sheetWrap').hidden=true;render();gameLoop();}
+function resumeGame(saved){tutStop();leaveOnline();showScreen('table');GEN++;pendingMove=pendingEnd=null;G=upgradeState(saved);UI={phase:'idle',sel:null,mode:'normal',busy:false};$('#sheetWrap').hidden=true;render();if(G.over){UI.phase='over';render();}else gameLoop();}
 
 /* ---------- sound (synthesised, no files) ---------- */
 const SND={ctx:null,on:lsGet('riverfair-sound')!=='off'};
@@ -1150,12 +1152,13 @@ function render(){
   else if(UI.phase==='busy')msg=esc(G.log[0]&&!G.log[0].s?G.log[0].t:'Resolving your action…');
   else if(UI.phase==='post')msg='Play a card if you like, then end your turn.';
   else{const e=G.log.find(x=>!x.s);msg=esc(e?e.t:`Waiting for ${p.name}…`);}
+  tutAdvance();const tutLock=tutScripted();
   if(!G.over&&mineNow){
-    if(UI.phase==='move')acts+=`<button class="btn" id="suggBtn">Suggest</button>`;
+    if(UI.phase==='move'&&!tutLock)acts+=`<button class="btn" id="suggBtn">Suggest</button>`;
     if(UI.phase==='move'&&p.tt&&p.tt.m)acts+=`<button class="btn ${UI.mode==='line'?'primary':''}" id="lineBtn">${UI.mode==='line'?'Normal move':'Straight line'}</button>`;
     if(['move','post'].includes(UI.phase)&&p.tiles.y&&!p.yellowUsed&&p.lira>=2&&Object.keys(p.assist).length)acts+=`<button class="btn" id="yelBtn">${chip('y')} Recall (${L(2)})</button>`;
-    if(UI.phase==='post'&&RNG_N===TURN.rng)acts+=`<button class="btn" id="undoBtn">Undo move</button>`;
-    if(UI.phase==='post')acts+=`<button class="btn primary" id="endBtn">End turn</button>`;
+    if(UI.phase==='post'&&RNG_N===TURN.rng&&!tutLock)acts+=`<button class="btn" id="undoBtn">Undo move</button>`;
+    if(UI.phase==='post'&&(!tutLock||tutStep().end))acts+=`<button class="btn primary" id="endBtn">End turn</button>`;
   }
   if(G.over)acts=`<button class="btn primary" id="resBtn">Results</button>`;
   $('#banner').innerHTML=`<span class="who">${merchantToken(p,false).replace(/data-k="[^"]*"/,'')}${G.over?'':esc(p.name)+(p.ai?' (AI)':'')}</span><span class="msg">${msg}</span><span class="acts">${acts}</span>`;
@@ -1168,7 +1171,8 @@ function render(){
   const rb=$('#resBtn');if(rb)rb.onclick=showEnd;
   // board
   const moving=UI.phase==='move'&&mineNow;
-  const reach=new Set(moving?reachable(G,p,UI.mode):[]);
+  let reach=new Set(moving?reachable(G,p,UI.mode):[]);
+  if(tutLock)reach=new Set([...reach].filter(x=>(tutStep().only||[]).includes(x))); // the lesson decides where you may go
   const bd=$('#board');bd.classList.toggle('x5',COLS(G)===5);
   /* rebuild only the tiles: walking figures and the barrier live on the board too and must survive redraws */
   bd.querySelectorAll(':scope > .tile').forEach(t=>t.remove());
@@ -1229,6 +1233,7 @@ function render(){
   renderStrip();
   runFx(before);
   if(ON.code&&ON.driving)queueLive();
+  tutUpdate();
 }
 function drawBarrier(){
   const b=$('#board');if(!b)return;b.querySelectorAll('.barrier').forEach(x=>x.remove());
@@ -1709,7 +1714,7 @@ async function installApp(){
 }
 /* ---------- home ---------- */
 const HOME={n:2,seats:['friend','friend','ai','ai','ai'],layout:'short',exp:false};
-function goHome(){leaveOnline();GEN++;pendingMove=pendingEnd=null;$('#sheetWrap').hidden=true;showScreen('home');renderHome();}
+function goHome(){tutStop();leaveOnline();GEN++;pendingMove=pendingEnd=null;$('#sheetWrap').hidden=true;showScreen('home');renderHome();}
 function renderHome(){
   let saved=null;try{saved=JSON.parse(lsGet(STORE)||'null');}catch(e){}
   if(saved&&saved.over)saved=null;
@@ -1729,12 +1734,13 @@ function renderHome(){
       ${saved&&saved.players?`<button class="btn primary big hm-go" id="resumeBtn">Continue your game<small>Round ${saved.round} · ${saved.players.length} players</small></button>`:''}
       <button class="btn ${saved?'':'primary'} big hm-go" id="onlineBtn">Play online<small>Invite friends. No account needed.</small></button>
       <button class="btn big hm-go" id="localBtn">Play on this device<small>Pass-and-play or practise against AI.</small></button>
+      <button class="btn big hm-go hm-learn" id="learnBtn">Learn to play<small>A guided first game on the real board. About 5 minutes.</small></button>
       <div class="hm-or"><span>◆</span></div>
       <label class="hm-lbl" for="joinCode">Have a game code?</label>
       <div class="hm-join"><input id="joinCode" maxlength="8" placeholder="Enter code" autocapitalize="characters" autocomplete="off"><button class="btn primary" id="joinBtn">Join</button></div>
     </div>
     <div class="hm-links">
-      <button class="hm-link" id="rulesBtn2">New to ${T.name}? How to play <span aria-hidden="true">→</span></button>
+      <button class="hm-link" id="rulesBtn2">Read the rules <span aria-hidden="true">→</span></button>
       ${IS_APP?'':`<button class="hm-link" id="installBtn"><img src="art/app/icon-192.png" alt="" width="18" height="18"> Install the app</button>`}
     </div>
     <p class="hm-foot">2–5 players · Online or around one table</p>
@@ -1744,6 +1750,7 @@ function renderHome(){
   $('#onlineBtn').onclick=onlineSheet;
   $('#localBtn').onclick=setupSheet;
   $('#rulesBtn2').onclick=rulesSheet;
+  $('#learnBtn').onclick=startTutorial;
   const ib=$('#installBtn');if(ib)ib.onclick=installApp;
   const rb=$('#resumeBtn');if(rb)rb.onclick=()=>resumeGame(saved);
 }
@@ -1774,6 +1781,93 @@ function onlineSheet(){
     };
   };
   draw();w.hidden=false;const f=$('#homeName');if(f&&!f.value)f.focus();
+}
+
+/* ---------- guided tutorial ----------
+   A real two-player game on the learning layout. The opening turns are scripted: the coach card
+   explains one idea at a time, only the place being taught can be reached, and the rival's moves
+   and the one dice roll that matters are fixed so every lesson lands the same way. When the
+   script ends the game simply carries on as normal free play. Tutorial games are never saved. */
+const tutStep=()=>TUT&&TUT.steps[TUT.i]||{};
+const tutScripted=()=>!!(TUT&&G&&G.tut&&TUT.i<TUT.steps.length);
+function tutSetup(){
+  const me=cleanName(lsGet('riverfair-name'))||'Hob',rival=AI_NAMES[0];
+  const g=newGame({players:[{name:me,ai:false},{name:rival,ai:true}],layout:'short',exp:false});
+  g.players.forEach(p=>{g.deck.push(...p.cards);p.cards=[];});
+  const take=k=>g.deck.splice(g.deck.indexOf(k),1)[0];
+  g.players[0].cards.push(take('lira5'));g.players[1].cards.push(take('dGem'));
+  g.start=g.current=0;g.players[0].lira=2;g.players[1].lira=3;
+  g.gov=5;g.smug=11;g.neutrals=[{color:'grey',pos:14},{color:'grey',pos:15},{color:'grey',pos:16}];
+  for(let k=0;k<5&&g.small[0].join('')!=='rgygg';k++)g.small.push(g.small.shift()); // Riverside wants Wool, Herbs, Honey
+  g.log=[{t:`${g.players[0].name} starts. First to ${winTarget(g)} ${W.rubies} ends the game.`,c:g.players[0].color}];
+  g.tut=true;
+  return g;
+}
+function tutSteps(){
+  const rival=AI_NAMES[0],purse=CARD_DEFS.lira5.name;
+  const tile=n=>`.tile[data-pl="${n}"]`;
+  const moved=()=>UI.phase==='post';
+  const end=(title,text)=>({when:'post',end:true,spot:'#endBtn',title,text:text+' Tap <b>End turn</b>.',until:()=>UI.phase!=='post'});
+  return [
+    {when:'move',title:`Welcome to ${T.name}`,text:`You're a hedgehog trader in a busy market town, racing to earn ${W.rubies}. In a two-player game the first to ${winTarget(G)} ends it. This lesson plays the opening turns of a real game against ${rival}. When it's done, the game keeps going and you play it out.`,next:'Show me'},
+    {when:'move',spot:tile(7),title:'This is you',text:`Your trader starts at the ${PNAME[7]} with 4 ${W.assistants}. Each turn you move 1 or 2 places (up, down, left or right, never diagonally), then take that place's action.`,next:'Next'},
+    {when:'move',only:[2],spot:tile(2),title:'Fill your cart',text:`Head to the ${PNAME[2]}, one step up. Tap it, then tap <b>Move here</b>.`,until:moved},
+    {when:'post',spot:tile(2),title:`${GNAME.r} loaded`,text:`You left 1 ${W.assistant} behind to mind this stall (the little figure on the tile) and filled your ${W.cart} with ${GNAME.r}. It holds 2 of each good for now.`,next:'Next'},
+    end('That was a full turn',`Move, leave an ${W.assistant}, take the action. ${rival} goes next.`),
+    {when:'move',spot:tile(14),title:`${W.tiles[0].toUpperCase()+W.tiles.slice(1)}`,text:`Lodges hand out ${W.tiles} with handy perks. Hold both badges from one lodge and it gives you a ${W.ruby}. The ${PNAME[14]} wants to see 2 ${GNAME.r} for its ${GNAME.r} badge, and you have them.`,next:'Next'},
+    {when:'move',only:[14],spot:tile(14),enter:()=>{TUT.dice=[[3,5]];},title:'Pay the locals',text:`A ${W.neutral} is already standing there. When you arrive where other traders are, you pay each of them 2 ${W.cur}, and you have exactly 2. Move to the lodge, then claim the ${GNAME.r} badge.`,until:moved},
+    {when:'post',spot:['.pl[data-pi="0"] .tiles4'],title:'Your first badge',text:`It cost you 1 ${GNAME.r}. Its perk: at the ${SHORT[9]} and ${PNAME[8]} you may turn one die to 4 or re-roll. The ${W.neutral} you paid wandered off to ${PNAME[8]}.`,next:'Next'},
+    end('Next, the other badge',`Get 2 ${GNAME.g} and this lodge gives you a ${W.ruby}.`),
+    {when:'move',spot:['.pl[data-pi="0"] .hand [data-card]'],title:W.cards[0].toUpperCase()+W.cards.slice(1),text:`You hold a ${W.card}, <b>${purse}</b>. Cards give one-off boosts. Tap it and play it for 5 ${W.cur}.`,until:()=>!G.players[0].cards.includes('lira5')},
+    {when:'move',only:[3],spot:tile(3),title:`Fetch ${GNAME.g}`,text:`The ${PNAME[3]} is one step down. Move there to fill up on ${GNAME.g}.`,until:moved},
+    {when:'post',spot:['#myStrip .ms-ap','.pl[data-pi="0"] [data-stat="ap"]'],title:`Mind your ${W.assistants}`,text:`Every place you visit keeps one of your ${W.assistants}, and you have 1 left. With none along, arriving somewhere ends your turn with nothing done, so watch this number.`,next:'Next'},
+    end('Back to the lodge',`You're carrying 2 ${GNAME.g} now.`),
+    {when:'move',only:[14],spot:tile(14),title:`Earn a ${W.ruby}`,text:`Your ${W.assistant} is still waiting at the lodge, so this time you pick it up instead of leaving another. Move there and claim the ${GNAME.g} badge.`,until:moved},
+    {when:'post',spot:['#myStrip .ms-feath','.pl[data-pi="0"] .rubies'],title:`Your first ${W.ruby}`,text:`Both badges from one lodge: that's a ${W.ruby}. The ${GNAME.g} badge also lets you buy 1 extra good for 2 ${W.cur} whenever you fill up at a store.`,next:'Next'},
+    end('Nicely done',`${rival} is still hunting for a first ${W.ruby}.`),
+    {when:'move',only:[7],spot:tile(7),title:'Call them home',text:`Two ${W.assistants} are still out at the ${PNAME[2]} and ${PNAME[3]}. The ${PNAME[7]}, 2 steps away, calls all of them back, needs no ${W.assistant} and charges no fees.`,until:moved},
+    end(`All ${W.assistants} home`,`You have all 4 with you again.`),
+    {when:'move',only:[11],spot:tile(11),title:'Sell at the market',text:`Markets buy only the goods on their order board. The ${PNAME[11]} wants ${GNAME.r}, ${GNAME.g} and ${GNAME.y}, so sell your ${GNAME.r} and ${GNAME.g}. ${NSC('smug')} the fox smuggler is there too: after your action he offers a good of your choice for 2 ${W.cur} or 1 good.`,until:moved},
+    {when:'post',title:'You know the basics',text:`Every turn works this way: move, leave an ${W.assistant}, take the action, deal with whoever is there.</p><p>Other ways to earn ${W.rubies}: deliver goods at the ${PNAME[13]}, buy one at ${PNAME[16]}, add your third crate at ${PNAME[1]}, or take both badges at the ${PNAME[15]}. Your ${W.family} at the ${PNAME[12]} gives a free action anywhere.</p><p>Tap any place to read what it does, and use <b>Suggest</b> when you're stuck. The game is yours now.`,next:'Play on',finish:true}
+  ];
+}
+function startTutorial(){
+  tutStop();leaveOnline();showScreen('table');GEN++;pendingMove=pendingEnd=null;$('#sheetWrap').hidden=true;
+  G=tutSetup();UI={phase:'idle',sel:null,mode:'normal',busy:false};
+  TUT={i:0,ai:[3,9,7,1,10],dice:[],steps:null,seen:-1}; // the rival's first five moves never get in the lesson's way
+  TUT.steps=tutSteps();
+  render();gameLoop();
+}
+function tutAdvance(){ // move past steps whose goal has been met
+  if(!TUT||!G||!G.tut)return;
+  for(;;){const s=tutStep();if(TUT.i>=TUT.steps.length||!s.until||!s.until())break;TUT.i++;}
+}
+function tutStop(){TUT=null;const c=$('#coach');if(c)c.hidden=true;document.querySelectorAll('.tut-spot').forEach(e=>e.classList.remove('tut-spot'));}
+function tutVisible(el){return el&&el.getClientRects().length>0;}
+function tutUpdate(){
+  if(!TUT)return;
+  if(!G||!G.tut){tutStop();return;}
+  const mine=G.current===0&&!G.over;
+  tutAdvance();
+  let c=$('#coach');if(!c){c=document.createElement('div');c.id='coach';c.setAttribute('role','dialog');c.setAttribute('aria-live','polite');document.body.appendChild(c);}
+  document.querySelectorAll('.tut-spot').forEach(e=>e.classList.remove('tut-spot'));
+  const s=tutStep();
+  if(TUT.i>=TUT.steps.length||!mine||UI.phase!==s.when){c.hidden=true;return;}
+  if(TUT.seen!==TUT.i){TUT.seen=TUT.i;if(s.enter)s.enter();TUT.scroll=true;}
+  const sels=[].concat(s.spot||[]);let el=null;
+  for(const q of sels){const e=document.querySelector(q);if(tutVisible(e)){el=e;break;}}
+  if(el)el.classList.add('tut-spot');
+  const n=TUT.steps.length;
+  c.innerHTML=`<div class="co-top"><span class="co-step">Lesson · ${TUT.i+1} of ${n}</span><button class="co-skip" id="coSkip">Skip lesson</button></div>
+    <div class="co-bar"><i style="width:${Math.round(100*(TUT.i+1)/n)}%"></i></div>
+    <h3>${s.title}</h3><p>${s.text}</p>
+    ${s.next?`<div class="co-btns"><button class="btn primary" id="coNext">${s.next}</button></div>`:`<p class="co-do">${s.end?'Waiting for you to end your turn…':s.only?'Waiting for your move…':'Waiting for you…'}</p>`}`;
+  c.hidden=false;
+  const r=el?el.getBoundingClientRect():null;
+  c.classList.toggle('at-top',!!r&&(r.top+r.height/2)>innerHeight*.52);
+  if(el&&TUT.scroll){TUT.scroll=false;const top=r.top<70,low=r.bottom>innerHeight-(c.offsetHeight+40);if(top||low)el.scrollIntoView({behavior:REDUCED?'auto':'smooth',block:'center'});}
+  $('#coSkip').onclick=()=>{tutStop();toast('Lesson skipped. Keep playing, or open the Menu.');render();};
+  const nb=$('#coNext');if(nb)nb.onclick=()=>{if(s.finish){tutStop();render();return;}TUT.i++;render();};
 }
 
 /* ---------- boot ---------- */

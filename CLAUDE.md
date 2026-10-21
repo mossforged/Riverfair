@@ -75,11 +75,19 @@ Read this first. It records what the game is, how the code is laid out, the deci
   - `?mock` swaps in a same-browser fake database for testing with two tabs.
 - Local saves are stored under `riverfair-*` keys. Older `istanbul-*` keys are migrated automatically at startup.
 
+## Guided tutorial ("Learn to play" on the title screen)
+- `startTutorial()` builds a real two-player base game (`tutSetup()`): the player (saved name, or "Hob") against the AI Bramble, on the short layout, with fixed coins, cards, Crow, Fox and Riverside order board. The game carries `G.tut=true` and is never saved.
+- `tutSteps()` is the script: 20 coach cards over six turns (Wool Loft, Wool badge while paying a Peddler, a favour card, Herb Cellar, Herb badge for a Gold Feather, Town Well, selling at Riverside with the Fox there). Each step has `when` ('move' or 'post'), optional `only` (the one place you may move to), `spot` (selectors to highlight; the first visible one wins), and either a `next` button or an `until()` goal.
+- While the script runs, only the taught place is reachable, Suggest and Undo are hidden, End turn shows only on end-turn steps, and lodge claims have no Skip. Bramble's first five moves come from `TUT.ai`, and `TUT.dice` fixes the one roll that matters (the paid Peddler walks to Rat Alley). `SIMN` stops AI simulations from using those dice.
+- When the script ends (or the player taps Skip lesson) the same game continues as normal free play.
+- If you change the short layout, starting setup, or encounter rules, re-run the tutorial: its moves are planned around them.
+
 ## Testing that was used
 - Playwright (Chromium is preinstalled) against `python3 -m http.server`.
 - **All-AI games:** override `window.sleep` to finish quickly, then loop `playTurn` and `advanceTurn` over 2–5 players, with and without the expansion. Expect no errors and finished games.
 - **Movement test:** record every animation frame. Each move must keep the piece visible, avoid doubles and jumps over 40px, pass through the right tiles and face the direction of travel. Run it locally, on a phone-sized screen and online with two `?mock` tabs.
 - **Two-tab online test:** create, join by code, start, and play a guild card.
+- **Tutorial run:** click Learn to play, then loop: click the coach's Next, tap the step's `only` place and Move here, play the card, End turn, accept sheets. It should reach free play with 1 Gold Feather, both Wool & Herb badges and no errors, at 400px and desktop widths.
 
 ## Decisions already made (don't relitigate without the owner)
 - **Resources:**
