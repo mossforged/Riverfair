@@ -740,3 +740,45 @@ body.t-riverfair:not(.on-home) .board{box-shadow:0 0 0 1px rgba(201,162,74,.6),0
   .tile .again{font-size:12px;padding:4px 3px}
 }
 @media (min-width:2200px){.tile{--sh:110px}.tile .nm{font-size:21px}.tile .st{font-size:15px}.tile .plate img.gi{width:24px;height:24px}}
+/* ================= figures stand out from the painted tiles ================= */
+/* the painting behind standing figures softens and darkens, like a shallow depth of field */
+.tile .shade{position:absolute;left:0;right:0;bottom:0;top:34%;z-index:0;pointer-events:none;
+  -webkit-backdrop-filter:blur(1.6px) saturate(.5) brightness(.66);backdrop-filter:blur(1.6px) saturate(.5) brightness(.66);
+  -webkit-mask-image:linear-gradient(to bottom,transparent,#000 40%);mask-image:linear-gradient(to bottom,transparent,#000 40%)}
+/* a thin cream outline, like a cut-out cardboard standee */
+.tile .tok .standee img{filter:drop-shadow(1.3px 0 0 #fff4d6) drop-shadow(-1.3px 0 0 #fff4d6) drop-shadow(0 1.3px 0 #fff4d6) drop-shadow(0 -1.3px 0 #fff4d6) drop-shadow(0 3px 3px rgba(0,0,0,.65))}
+.tile .tok .standee::after{height:9px;box-shadow:inset 0 -2px 0 rgba(0,0,0,.25),0 0 0 1.5px #fff4d6,0 2px 4px rgba(0,0,0,.5)}
+/* apprentices and cousins get the same light ring */
+.tile .ast.icon img,.tile .fam.icon img{box-shadow:0 0 0 2.5px currentColor,0 0 0 4px #fff4d6,0 2px 5px rgba(0,0,0,.55)}
+/* crowded tiles: spread the group across the tile instead of stacking it in one corner */
+.tile .tok.n3,.tile .tok.n4,.tile .tok.n5{justify-content:center}
+.tile .tok.n3{--sh2:.88}.tile .tok.n4{--sh2:.76}.tile .tok.n5{--sh2:.68}
+.tile .tok.n3 .standee+.standee,.tile .tok.n4 .standee+.standee,.tile .tok.n5 .standee+.standee{margin-left:calc(var(--sh) * var(--sh2,1) * -0.2)}
+.tile .tok.n4 .standee+.standee,.tile .tok.n5 .standee+.standee{margin-left:calc(var(--sh) * var(--sh2,1) * -0.32)}
+/* ================= results screen ================= */
+.es{display:grid;gap:8px;text-align:left}
+.es-row{display:grid;grid-template-columns:22px auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;border-radius:12px;background:rgba(255,250,240,.7);box-shadow:inset 0 0 0 1px #e3d1a8}
+.es-row.win{background:linear-gradient(to right,rgba(201,162,74,.28),rgba(255,250,240,.7));box-shadow:inset 0 0 0 2px #c9a24a}
+.es-rk{font-family:var(--f-display);font-size:20px;font-weight:800;color:#8c6a24;text-align:center}
+.es-row .portrait{width:42px;height:42px}
+.es-mid b{font-family:var(--f-display);font-size:17px}
+.es-srcs{display:flex;flex-wrap:wrap;gap:4px 6px;margin-top:3px}
+.es-src{display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:700;background:#fffaf0;border:1px solid #e3d1a8;border-radius:999px;padding:1px 8px 1px 5px}
+.es-src img.gi{width:14px;height:14px}
+.es-num{display:grid;justify-items:end;gap:1px;font-variant-numeric:tabular-nums}
+.es-num .ruby{font-size:18px}
+.es-num small{font-size:12px;color:#6d5a45;font-weight:700}
+.es-h{margin:14px 0 6px;text-align:center}
+.es-aw{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;text-align:center}
+.es-aw div{display:grid;gap:1px;padding:8px;border-radius:12px;background:#fffaf0;border:1px dashed #c9a24a}
+.es-aw b{font-family:var(--f-display);font-size:14px;color:#8c4a2a}
+.es-aw span{font-weight:800;font-size:14px}
+.es-aw small{font-size:12px;color:#6d5a45}
+.es-tie{font-size:12px;margin-top:10px}
+#pushBtn{display:inline-flex;align-items:center;gap:6px}
+#pushBtn[hidden]{display:none}
+#pushBtn[aria-pressed="true"]{color:var(--cobalt)}
+@media (max-width:640px){#pushBtn .pb-l{display:none}#pushBtn{padding:9px 10px}}
+/* painted card art */
+.pcard .pa.painted{position:relative;background:#c9a26a center/cover no-repeat;padding:0;justify-content:flex-end;align-items:flex-end}
+.pcard .pa.painted .pform{display:inline-flex;align-items:center;gap:1px;margin:2px;padding:1px 3px;border-radius:5px;background:rgba(251,243,223,.92);box-shadow:0 1px 3px rgba(0,0,0,.35);transform:scale(.62);transform-origin:bottom right}

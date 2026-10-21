@@ -25,6 +25,7 @@ Read this first. It records what the game is, how the code is laid out, the deci
 | `manifest.webmanifest`, `sw.js` | Installable app and offline cache |
 | `tools-precache.py` | Rewrites the offline file list in `sw.js`. Run it on every release (see below) |
 | `database.rules.json` | Firebase Realtime Database rules |
+| `server/push-worker.js` | Cloudflare Worker that sends turn alerts (not served by Pages; the owner pastes it into Cloudflare) |
 
 ## Releasing a change
 1. Bump the cache-busting stamp: `V=$(date -u +%Y%m%d%H%M); sed -i -E "s/\?v=[0-9]+/?v=$V/g" index.html`
@@ -82,15 +83,39 @@ Read this first. It records what the game is, how the code is laid out, the deci
 - When the script ends (or the player taps Skip lesson) the same game continues as normal free play.
 - If you change the short layout, starting setup, or encounter rules, re-run the tutorial: its moves are planned around them.
 
+## Mushrooms & Guilds tour
+- `xSteps()` / `startXLesson()`: six coach cards (mushrooms, Roastery, guild cards, Snug, Sorrel) shown at the start of a player's first expansion game on a device (`riverfair-xlesson`). Explains only; nothing is restricted. Replay it from How to play during an expansion game. It reuses the tutorial coach with `TUT.kind='exp'`.
+
+## AI skill
+- `p.lvl` is `easy`, `normal` or `hard` for AI players; one "AI skill" choice at setup (local and online, saved as `riverfair-lvl`) applies to all AI seats. Shown as "AI · Hard" tags.
+- Easy picks among the top 4 moves (40/25/20/15%), skips good guild cards 40% of the time and bets a random 4–9 at the Tavern. Normal is the original AI. Hard re-ranks its top 5 moves by also scoring the best follow-up move (`rankMoves(...,look)`) and bets 7 at the Tavern.
+
+## End of game
+- Players carry `fsrc` (Gold Feathers by place name, from `gainRuby`) and `st` stats (`steps`, `paid`, `sold`, `deals`, `caught`, `bet`, via `stat()`). The results sheet (`endHTML`) shows each player's feather sources and up to four "Market awards".
+- **Rematch** starts the same seats again. Locally it calls `startGame`. Online it creates a new game already in play, records its code at `games/<old>/next`, and everyone else gets a "Rematch!" prompt to follow it.
+
+## Turn alerts (web push)
+- Online games show a bell button. Turning it on asks permission, subscribes with `PUSH_KEY` (public VAPID key) and stores the subscription at `games/<CODE>/push/<ME>`. Each client also writes `games/<CODE>/vis/<ME>` (is the tab visible).
+- After every committed turn (and at start and rematch) the driving client calls `PUSH_URL/notify` with the code. The worker reads the game from Firebase, and if the player to move is a human who is away (no presence, or tab hidden) it sends one alert per turn (`games/<CODE>/notified`). `sw.js` shows it and opens `?game=CODE` when tapped.
+- **Status:** built and tested (encryption against `http_ece`, worker logic against a fake database, the button and storage in a browser), but **not live until the owner deploys the worker** and `PUSH_URL` in `game.js` is set. The private VAPID key was handed to the owner directly; it is not in the repo. iPhones only allow alerts from the installed app.
+
+## Card art
+- `THEME.art.cards[key]` and `THEME.art.guild[n]` (paths under `art/cards/`) fill the card's picture window; the icon formula stays as a small badge in the corner. Square images work best. Process: one shared style prompt plus a one-line subject per card, about five cards per batch.
+
 ## Music
 - A music toggle (note icon in the header, plus "♪ Music" on the tutorial coach card) plays a looping 6/8 tune in D major, synthesised with Web Audio like the sound effects: `MEL`, `CHORD`, `musSchedule()`. Off by default; the choice is saved as `riverfair-music`. It pauses while the tab is hidden.
 - To use a real recording instead, add `music: 'art/music/theme.mp3'` (or similar) to `themes/riverfair.js`; `musicStart()` then plays that file on a loop. Add the file to `tools-precache.py`'s list if it should work offline (it only collects `.webp`/`.png`).
+
+## Board figures
+- Tiles with standing figures get a `.shade` layer that blurs and darkens the painting behind them, and standees get a cream cut-out outline. Groups of 3+ spread across the tile.
 
 ## Testing that was used
 - Playwright (Chromium is preinstalled) against `python3 -m http.server`.
 - **All-AI games:** override `window.sleep` to finish quickly, then loop `playTurn` and `advanceTurn` over 2–5 players, with and without the expansion. Expect no errors and finished games.
 - **Movement test:** record every animation frame. Each move must keep the piece visible, avoid doubles and jumps over 40px, pass through the right tiles and face the direction of travel. Run it locally, on a phone-sized screen and online with two `?mock` tabs.
 - **Two-tab online test:** create, join by code, start, and play a guild card.
+- **AI skill tournament:** Easy, Normal and Hard play each other with `window.sleep` stubbed; Hard should win most, Easy least.
+- **Online rematch:** two `?mock` tabs, finish the game in the mock database, Rematch from one tab, follow from the other; both end up in the new game in their own seats.
 - **Tutorial run:** click Learn to play, then loop: click the coach's Next, tap the step's `only` place and Move here, play the card, End turn, accept sheets. It should reach free play with 1 Gold Feather, both Wool & Herb badges and no errors, at 400px and desktop widths.
 
 ## Decisions already made (don't relitigate without the owner)
@@ -115,7 +140,9 @@ Read this first. It records what the game is, how the code is laid out, the deci
 ## Open items
 - **Music:** the synthesised tune is a placeholder-quality first pass. The owner may replace it with an AI-generated track (see Music above).
 - The owner's real playtest with a friend hasn't happened yet. Expect feedback on pacing, clarity and online quirks.
-- **Turn notifications** for slow games played over a day are designed but not built. They need a small server: either Firebase Cloud Functions (needs the paid plan with a card on file) or a free Cloudflare Worker. The owner hasn't chosen.
+- **Turn alerts:** waiting for the owner to deploy `server/push-worker.js` to Cloudflare and send the worker address for `PUSH_URL`.
+- **Letters & Seals** (the second official expansion): the owner wants it eventually for completeness; paused. Ask for its rulebook PDF before building.
+- **Card art:** first batch of prompts given (Spare crate, Purse of coppers, Shortcut, Whistle, Bail out cousin).
 - **Unused art:** the `charter` icon.
 - **Optional extras:**
   - outdoor versions of the Snug and Roastery tiles (prompts were written)

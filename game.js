@@ -27,6 +27,8 @@ Object.assign(CARD_COUNTS,EXP_CARDS);
 const CARD_DEFS={};for(const k in CARD_COUNTS)if(T.cards[k])CARD_DEFS[k]={n:CARD_COUNTS[k],...T.cards[k]};
 const COLORS=['red','green','yellow','teal','white'];
 const AI_NAMES=T.aiNames;
+const LEVELS={easy:'Easy',normal:'Normal',hard:'Hard'};
+const lvlOf=p=>p&&p.lvl||'normal';
 const STORE='riverfair-table-v1';
 (function(){try{['table-v1','name','sound','me','preview'].forEach(k=>{const o='istan'+'bul-'+k,n='riverfair-'+k;
   [localStorage,sessionStorage].forEach(st=>{if(st.getItem(n)==null&&st.getItem(o)!=null)st.setItem(n,st.getItem(o));});});}catch(e){}})();
@@ -136,7 +138,7 @@ function newGame(cfg){
   const n=cfg.players.length;
   const x=!!cfg.exp;
   const layout=cfg.layout==='random'?randomLayout(x):(x?LAYOUTS20:LAYOUTS)[cfg.layout].slice();
-  const players=cfg.players.map((pl,i)=>({i,name:cleanName(pl.name)||('Player '+(i+1)),ai:!!pl.ai,owner:pl.owner||(pl.ai?'ai':''),color:COLORS[i],lira:0,coffee:0,guild:[],tt:{m:0,e:0},goods:{r:0,g:0,y:0,b:0},ext:0,rubies:0,tiles:{r:0,g:0,y:0,b:0},stack:4,assist:{},pos:7,family:12,cards:[],yellowUsed:false}));
+  const players=cfg.players.map((pl,i)=>({i,name:cleanName(pl.name)||('Player '+(i+1)),ai:!!pl.ai,lvl:pl.ai?(pl.lvl||cfg.lvl||'normal'):undefined,owner:pl.owner||(pl.ai?'ai':''),color:COLORS[i],lira:0,coffee:0,guild:[],tt:{m:0,e:0},goods:{r:0,g:0,y:0,b:0},ext:0,rubies:0,tiles:{r:0,g:0,y:0,b:0},stack:4,assist:{},pos:7,family:12,cards:[],yellowUsed:false}));
   const deck=[];Object.entries(CARD_DEFS).forEach(([k,d])=>{if(EXP_CARDS[k]&&!x)return;for(let i=0;i<d.n;i++)deck.push(k);});shuffle(deck);
   const start=rnd(n);
   for(let k=0;k<n;k++){const p=players[(start+k)%n];p.lira=2+k;p.cards.push(deck.pop());}
@@ -156,12 +158,14 @@ function newGame(cfg){
 }
 
 /* ---------- turn resolution ---------- */
-function gainRuby(ctx,p,src){const g=ctx.G;p.rubies++;log(ctx,`${p.name} gains a ${W.ruby} at the ${src} (${p.rubies}).`,p);
+const stat=(p,k,n=1)=>{if(!p.st)p.st={};p.st[k]=(p.st[k]||0)+n;}; // end-of-game stats
+function gainRuby(ctx,p,src){const g=ctx.G;p.rubies++;if(!p.fsrc)p.fsrc={};p.fsrc[src]=(p.fsrc[src]||0)+1;log(ctx,`${p.name} gains a ${W.ruby} at the ${src} (${p.rubies}).`,p);
   if(!g.endTriggered&&p.rubies>=winTarget(g)){g.endTriggered=true;log(ctx,`${p.name} reached ${p.rubies} ${W.rubies}. The game ends after this round.`,p);}}
 
 async function resolveMove(ctx,target,mode){
   const g=ctx.G,p=cur(g);
   const from=p.pos;
+  if(mode!=='stay')stat(p,'steps',dist(g,from,target));
   p.pos=target;
   log(ctx,mode==='stay'?`${p.name} stays at the ${PNAME[target]}.`:`${p.name} moves to the ${PNAME[target]}.`,p);
   { const steps=mode==='stay'?0:dist(g,from,target); await sleep(ctx,Math.max(p.ai?650:420,steps*STEP_MS+(p.ai?350:200))); }
@@ -176,7 +180,7 @@ async function resolveMove(ctx,target,mode){
     const cost=2*(others.length+neut.length);
     if(cost>0){
       if(p.lira<cost){note(ctx,p,`${p.name} can't pay the ${L(cost)} owed to ${W.merchants} here, so the turn ends.`);return;}
-      p.lira-=cost;others.forEach(q=>q.lira+=2);neut.forEach(x=>x.pos=rollSum());
+      p.lira-=cost;stat(p,'paid',cost);others.forEach(q=>q.lira+=2);neut.forEach(x=>x.pos=rollSum());
       log(ctx,`${p.name} pays ${L(cost)} to the ${plural(cost/2,W.merchant,W.merchants)} here.`,p);
     }
   }
@@ -184,7 +188,7 @@ async function resolveMove(ctx,target,mode){
   checkGen(ctx);
   if(target!==12){
     for(const q of g.players){if(q!==p&&q.family===target){
-      q.family=12;const r=await decide(ctx,p,'familyReward',{name:q.name});
+      q.family=12;stat(p,'caught');const r=await decide(ctx,p,'familyReward',{name:q.name});
       if(r==='card'){const c=drawCard(g);if(c)p.cards.push(c);log(ctx,`${p.name} sends ${q.name}'s ${W.family} to the ${PNAME[12]} and draws a card.`,p);}
       else{p.lira+=3;log(ctx,`${p.name} sends ${q.name}'s ${W.family} to the ${PNAME[12]} and takes ${L(3)}.`,p);}
     }}
@@ -195,7 +199,7 @@ async function resolveMove(ctx,target,mode){
       if(p.tt&&p.tt.e)log(ctx,`${p.name} pays nothing, thanks to the ${W.encTile}.`,p);
       else{const pay=await decide(ctx,p,'govPay',{});
       if(pay==='lira'){p.lira-=2;}else{const [d]=p.cards.splice(pay,1);g.discard.push(d);}}
-      g.gov=rollSum();log(ctx,`${p.name} deals with ${NS('gov')}, who moves to the ${PNAME[g.gov]}.`,p);
+      g.gov=rollSum();stat(p,'deals');log(ctx,`${p.name} deals with ${NS('gov')}, who moves to the ${PNAME[g.gov]}.`,p);
     }
   }
   if(g.smug===target){
@@ -205,14 +209,14 @@ async function resolveMove(ctx,target,mode){
       p.goods[c]++;
       if(!(p.tt&&p.tt.e)){const pay=await decide(ctx,p,'smugPay',{});
       if(pay==='lira')p.lira-=2;else p.goods[pay]--;}
-      g.smug=rollSum();log(ctx,`${p.name} deals with ${NS('smug')}, who moves to the ${PNAME[g.smug]}.`,p);
+      g.smug=rollSum();stat(p,'deals');log(ctx,`${p.name} deals with ${NS('smug')}, who moves to the ${PNAME[g.smug]}.`,p);
     }
   }
   if(g.x&&g.trader===target&&(p.lira>=2||totalGoods(p)>0||(p.tt&&p.tt.e))){
     if(await decide(ctx,p,'confirm',{key:'trader',title:NT('trader'),text:p.tt&&p.tt.e?`Take ${TEA(1)} for free (${W.encTile})?`:`Take ${TEA(1)} for ${L(2)} or 1 good?`,yes:`Take ${TEA(1)}`,no:'Ignore'})){
       if(!(p.tt&&p.tt.e)){const pay=await decide(ctx,p,'smugPay',{who:'trader'});
       if(pay==='lira')p.lira-=2;else p.goods[pay]--;}
-      p.coffee++;g.trader=rollSum();log(ctx,`${p.name} buys ${TEA(1)} from ${NS('trader')}, who moves to the ${PNAME[g.trader]}.`,p);
+      p.coffee++;g.trader=rollSum();stat(p,'deals');log(ctx,`${p.name} buys ${TEA(1)} from ${NS('trader')}, who moves to the ${PNAME[g.trader]}.`,p);
     }
   }
 }
@@ -283,7 +287,7 @@ async function doAction(ctx,p,place){
   case 9:{
     const n=await decide(ctx,p,'pickNumber',{});
     log(ctx,`${p.name} announces ${n}.`,p);
-    const d=await rollWithRed(ctx,p,'tea',n);const s=d[0]+d[1];const gain=s>=n?n:2;p.lira+=gain;
+    const d=await rollWithRed(ctx,p,'tea',n);const s=d[0]+d[1];const gain=s>=n?n:2;p.lira+=gain;stat(p,'bet',gain);
     log(ctx,`${p.name} takes ${L(gain)} at the ${PNAME[9]}.`,p);break;}
   case 10:case 11:{
     const mk=place===10?g.large:g.small;const tile=mk[0];
@@ -292,7 +296,7 @@ async function doAction(ctx,p,place){
     if(any)useCard(g,p,'smAny');
     const sel=await decide(ctx,p,'sell',{tile,rev:REV[place],any,place});
     const n=GOODS.reduce((s,c)=>s+sel[c],0);
-    if(n>0){GOODS.forEach(c=>p.goods[c]-=sel[c]);p.lira+=REV[place][n];log(ctx,`${p.name} sells ${n} ${plural(n,'good','goods')} for ${L(REV[place][n])}.`,p);}
+    if(n>0){GOODS.forEach(c=>p.goods[c]-=sel[c]);p.lira+=REV[place][n];stat(p,'sold',REV[place][n]);log(ctx,`${p.name} sells ${n} ${plural(n,'good','goods')} for ${L(REV[place][n])}.`,p);}
     else log(ctx,`${p.name} sells nothing.`,p);
     mk.push(mk.shift());break;}
   case 12:{
@@ -478,8 +482,8 @@ async function playGuild(ctx,p,n){
     log(ctx,`${p.name} takes 2 ${GNAME[c]}, rolls ${s2} and gains ${add} ${GNAME.b}.`,p);await sleep(ctx,900);break;}
   case 9:{const t=await decide(ctx,p,'pickNumber',{});const d=roll2();setRoll(ctx,p,d,'tea',t,'Winnings doubled');const s2=d[0]+d[1];const gain=2*(s2>=t?t:2);p.lira+=gain;
     log(ctx,`${p.name} announces ${t}, rolls ${s2} and takes ${L(gain)}.`,p);await sleep(ctx,900);break;}
-  case 10:p.goods.r--;p.goods.g--;p.goods.y--;p.lira+=15;log(ctx,`${p.name} sells 3 goods for ${L(15)}.`,p);break;
-  case 11:p.goods.b--;p.goods.r--;p.goods.g--;p.lira+=20;log(ctx,`${p.name} sells 3 goods for ${L(20)}.`,p);break;
+  case 10:p.goods.r--;p.goods.g--;p.goods.y--;p.lira+=15;stat(p,'sold',15);log(ctx,`${p.name} sells 3 goods for ${L(15)}.`,p);break;
+  case 11:p.goods.b--;p.goods.r--;p.goods.g--;p.lira+=20;stat(p,'sold',20);log(ctx,`${p.name} sells 3 goods for ${L(20)}.`,p);break;
   case 12:{const t=await decide(gc,p,'policeTarget',{options:g.layout.filter(x=>x!==12),title:guildName(12),text:"Choose any place and take its action. No assistant needed and no encounters."});
     if(t!=null){log(ctx,`${p.name} takes the ${PNAME[t]} action.`,p);await doAction(gc,p,t);}
     if(p.family!==12){p.family=12;log(ctx,`${p.name}'s ${W.family} goes back to the ${PNAME[12]}.`,p);}break;}
@@ -546,7 +550,7 @@ async function aiDecide(ctx,p,kind,d){
     if(d.key==='green'&&p.lira<4)return null;
     if(d.key==='envoyAny')return spareGood(g,p,d.options);
     return bestGood(g,p,d.options);
-  case 'pickNumber':return p.tiles.r?8:6;
+  case 'pickNumber':{const l=lvlOf(p);if(l==='easy')return 4+rnd(6);if(l==='hard')return p.tiles.r?8:7;return p.tiles.r?8:6;}
   case 'dice':{const s=d.dice[0]+d.dice[1],lo=Math.min(...d.dice),four=s-lo+4;
     if(d.purpose==='tea'){if(s>=d.target)return 'keep';if(lo<4&&four>=d.target)return 'four';return 'reroll';}
     const br=x=>x>=11?3:x>=9?2:x>=7?1:0;
@@ -614,10 +618,22 @@ async function simulate(g,pi,target,mode){
   SIMN++;try{await resolveMove({G:C,sim:true,depth:1},target,mode);}finally{SIMN--;}
   return evalPlayer(C,p);
 }
-async function rankMoves(g,p,modes){
+async function rankMoves(g,p,modes,look){
   const cands=[];modes.forEach(m=>reachable(g,p,m).forEach(t=>cands.push({t,mode:m,pen:m==='normal'||m==='line'?0:5})));
   for(const c of cands){const runs=[8,9,12].includes(c.t)?3:1;let v=0;for(let r=0;r<runs;r++)v+=await simulate(g,p.i,c.t,c.mode);c.v=v/runs-c.pen+Math.random()*.6;}
-  return cands.sort((a,b)=>b.v-a.v);
+  cands.sort((a,b)=>b.v-a.v);
+  if(look&&cands.length>1){ // Hard: for the best few moves, also weigh the best move that would follow
+    const top=cands.slice(0,5);
+    for(const c of top){
+      const C=clone(g),q=C.players[p.i];if(c.mode!=='normal'&&c.mode!=='line')useCard(C,q,c.mode);
+      SIMN++;try{await resolveMove({G:C,sim:true,depth:1},c.t,c.mode);}finally{SIMN--;}
+      q.yellowUsed=false;
+      const nx=(await rankMoves(C,q,['normal']))[0];
+      c.v2=nx?.4*c.v+.6*nx.v:c.v;
+    }
+    top.sort((a,b)=>b.v2-a.v2);return [...top,...cands.slice(5)];
+  }
+  return cands;
 }
 
 async function aiTurn(ctx){
@@ -639,9 +655,14 @@ async function aiTurn(ctx){
     else if(hasCard(p,'recall')){useCard(g,p,'recall');recallFrom(p,far);log(ctx,`${p.name} plays “${CARD_DEFS.recall.name}”.`,p);}
   }
   const modes=['normal'];if(hasCard(p,'move34'))modes.push('move34');if(hasCard(p,'corner'))modes.push('corner');if(p.tt&&p.tt.m)modes.push('line');
-  const best=(await rankMoves(g,p,modes))[0];
+  const lvl=lvlOf(p);
+  const ranked=await rankMoves(g,p,modes,lvl==='hard');
+  let best=ranked[0];
+  if(lvl==='easy'&&ranked.length>1){ // Easy: often settles for a decent move rather than the best one
+    const w=[.4,.25,.2,.15],pool=ranked.slice(0,4);let r=Math.random()*w.slice(0,pool.length).reduce((a,b)=>a+b,0);
+    for(let k=0;k<pool.length;k++){r-=w[k];if(r<=0){best=pool[k];break;}}}
   checkGen(ctx);
-  if(g.x&&p.guild&&p.guild.length){
+  if(g.x&&p.guild&&p.guild.length&&!(lvl==='easy'&&Math.random()<.4)){
     let gb=null,gv=-1e9;
     for(const n of [...new Set(p.guild)]){
       if(!guildPlayable(g,p,n))continue;
@@ -815,6 +836,7 @@ async function playTurn(ctx){
   log(ctx,p0.name==='You'?'Your turn':`${p0.name}'s turn`,p0,true);
   if(p0.ai){UI.phase='ai';render();await sleep(ctx,400);await aiTurn(ctx);await sleep(ctx,700);return;}
   TURN={snap:JSON.stringify(G),rng:RNG_N};
+  if(G.x&&!G.tut&&!TUT&&!lsGet('riverfair-xlesson')&&isMine(p0))startXLesson();
   for(;;){
     UI.phase='move';UI.sel=null;UI.sugg=null;render();
     const target=await new Promise(r=>pendingMove=r);pendingMove=null;checkGen(ctx);
@@ -1123,7 +1145,7 @@ function rulesSheet(){
     <h4>${PNAME[19]}</h4><div class="rplaces"><div><b>${W.moveTile}</b><span>${TT_TEXT('m')}</span></div><div><b>${W.encTile}</b><span>${TT_TEXT('e')}</span></div><div><b>${W.bribe[0].toUpperCase()+W.bribe.slice(1)}</b><span>Its two sides ask for ${BRIBE_SIDES[0].map(chip).join('')} and ${BRIBE_SIDES[1].map(chip).join('')}; it flips after each use.</span></div></div>`:''}
     <h4>Tips</h4>
     <p>Reachable places show a hint of what you'd get. ◆ marks a ${W.ruby} you can take right now. <b>Suggest</b> asks the AI for its pick, and <b>Undo</b> takes back a move as long as no dice were rolled and no cards were drawn.</p>
-  </div>`,[{label:'Close',value:null,primary:true}],{wide:true});
+  </div>`,[{label:'Close',value:null,primary:true},...(X&&!G.over?[{label:`Replay the ${T.expName||'expansion'} tour`,value:'xl'}]:[])],{wide:true}).then(v=>{if(v==='xl')startXLesson();});
 }
 
 /* ---------- rendering ---------- */
@@ -1151,6 +1173,9 @@ function tileStatus(pl){
 function merchantToken(q,active){
   const art=T.art.merchants&&T.art.merchants[q.color];
   return `<i class="mer c-${q.color} ${active?'active':''} ${art?'standee':''} ${art&&FACE['m'+q.i]?'flip':''}" data-k="m${q.i}" title="${esc(q.name)}">${art?`<img src="${art}" alt="">`:q.stack}</i>`;
+}
+function figN(pl){ // standing figures on a place, for crowding and the backdrop shade
+  return Math.min(5,G.players.filter(q=>q.pos===pl&&T.art.merchants&&T.art.merchants[q.color]).length+(T.art.neutral?G.neutrals.filter(x=>x.pos===pl).length:0)+(T.art.gov&&G.gov===pl?1:0)+(T.art.smug&&G.smug===pl?1:0)+(T.art.trader&&G.x&&G.trader===pl?1:0));
 }
 function tokens(pl){
   const p=cur(G);let h='';
@@ -1239,7 +1264,7 @@ function render(){
   bd.querySelectorAll(':scope > .tile').forEach(t=>t.remove());
   bd.insertAdjacentHTML('afterbegin',G.layout.map((pl,ix)=>{const C=COLS(G),gr=Math.floor(ix/C)+1,gc=ix%C+1;
     const art=T.art.tiles&&T.art.tiles[pl];const h=reach.has(pl)?hintFor(p,pl,UI.mode):null;
-    return `<button class="tile k-${KIND[pl]} ${art?'art':''} ${reach.has(pl)?'reach':''} ${moving&&!reach.has(pl)?'dim':''} ${UI.sel===pl?'sel':''} ${UI.sugg===pl?'sugg':''}" data-pl="${pl}" aria-label="${PNAME[pl]}${h?': '+h.t.replace(/<[^>]+>/g,''):''}" style="--r:${gr};--c:${gc};${art?`--art:url('${art}')`:''}"><span class="plate"><span class="pn">${pl}</span><span class="nm">${SHORT[pl]}</span><span class="st">${tileStatus(pl)}</span></span>${h&&h.t?`<span class="hint h-${h.k||'plain'}">${h.t}</span>`:''}${UI.sel===pl&&reach.has(pl)?`<span class="again">Tap again to ${UI.mode==='stay'?'stay':'move'}</span>`:''}<span class="tok n${Math.min(5,G.players.filter(q=>q.pos===pl&&T.art.merchants&&T.art.merchants[q.color]).length+(T.art.neutral?G.neutrals.filter(x=>x.pos===pl).length:0)+(T.art.gov&&G.gov===pl?1:0)+(T.art.smug&&G.smug===pl?1:0)+(T.art.trader&&G.x&&G.trader===pl?1:0))}">${tokens(pl)}</span></button>`;}).join(''));
+    return `<button class="tile k-${KIND[pl]} ${art?'art':''} ${reach.has(pl)?'reach':''} ${moving&&!reach.has(pl)?'dim':''} ${UI.sel===pl?'sel':''} ${UI.sugg===pl?'sugg':''}" data-pl="${pl}" aria-label="${PNAME[pl]}${h?': '+h.t.replace(/<[^>]+>/g,''):''}" style="--r:${gr};--c:${gc};${art?`--art:url('${art}')`:''}"><span class="plate"><span class="pn">${pl}</span><span class="nm">${SHORT[pl]}</span><span class="st">${tileStatus(pl)}</span></span>${h&&h.t?`<span class="hint h-${h.k||'plain'}">${h.t}</span>`:''}${UI.sel===pl&&reach.has(pl)?`<span class="again">Tap again to ${UI.mode==='stay'?'stay':'move'}</span>`:''}${figN(pl)?'<span class="shade" aria-hidden="true"></span>':''}<span class="tok n${figN(pl)}">${tokens(pl)}</span></button>`;}).join(''));
   drawBarrier();
   document.querySelectorAll('.tile').forEach(t=>t.onclick=()=>{const v=+t.dataset.pl;
     if(moving&&reach.has(v)&&UI.sel===v&&pendingMove){commitMove(v);return;}
@@ -1275,7 +1300,7 @@ function render(){
     const showHand=ON.code?mine:(me&&!q.ai);
     const canRejoin=ON.code&&away&&!q.ai&&!G.players.some(x=>ownerOf(x)===ME);
     const port=PORT(q.color);
-    return `<div class="pl" data-pi="${q.i}"><div class="plh">${port?`<span class="portrait c-${q.color}" style="background-image:url('${port}')"></span>`:`<i class="mer c-${q.color}"></i>`}<span class="nm">${esc(q.name)}</span>${q.ai?'<span class="tag">AI</span>':''}${mine?'<span class="tag">You</span>':''}${away?'<span class="tag">Away</span>':''}${me?'<span class="tag turn">Turn</span>':''}
+    return `<div class="pl" data-pi="${q.i}"><div class="plh">${port?`<span class="portrait c-${q.color}" style="background-image:url('${port}')"></span>`:`<i class="mer c-${q.color}"></i>`}<span class="nm">${esc(q.name)}</span>${q.ai?`<span class="tag">AI${lvlOf(q)!=='normal'?' · '+LEVELS[lvlOf(q)]:''}</span>`:''}${mine?'<span class="tag">You</span>':''}${away?'<span class="tag">Away</span>':''}${me?'<span class="tag turn">Turn</span>':''}
       <span class="rubies" aria-label="${q.rubies} ${W.rubies}">${[...Array(tgt)].map((_,i)=>`<span class="${i<q.rubies?'ruby':'off'}">◆</span>`).join('')}${q.rubies>tgt?`<span class="ruby">+${q.rubies-tgt}</span>`:''}</span></div>
       <div class="stats"><span data-stat="lira"><b>${q.lira}</b> ${W.cur}</span>${G.x?`<span data-stat="coffee">${teaIc()} <b>${q.coffee}</b> ${W.coffee}</span>`:''}<span data-stat="ap"><b>${q.stack}</b> ${plural(q.stack,W.assistant,W.assistants)} along${out?` <span class="muted">· out: ${out}</span>`:''}</span><span class="muted">${W.family[0].toUpperCase()+W.family.slice(1)}: ${SHORT[q.family]}</span>${q.tt&&q.tt.m?`<span class="tag tt" data-tt="m" title="${TT_TEXT('m')}">${ICON('gutter-map')?`<img class="gi" src="${ICON('gutter-map')}" alt="">`:''}${W.moveTile}</span>`:''}${q.tt&&q.tt.e?`<span class="tag tt" data-tt="e" title="${TT_TEXT('e')}">${ICON('friends')?`<img class="gi" src="${ICON('friends')}" alt="">`:''}${W.encTile}</span>`:''}${G.x&&G.barrierOwner===q.i?`<span class="tag tt">${ICON('barricade')?`<img class="gi" src="${ICON('barricade')}" alt="">`:''}Holds the ${W.barrier}</span>`:''}
       <span class="tiles4" title="${W.tiles}">${GOODS.map(c=>ICON('badge-'+c)?`<span class="badge ${q.tiles[c]?'on':''}" data-b="${c}" title="${GNAME[c]} ${W.tile}${q.tiles[c]?'':' (not earned)'}"><img class="gi" src="${ICON('badge-'+c)}" alt=""></span>`:`<span class="mt ${q.tiles[c]?'on g-'+c:''}" data-b="${c}" title="${GNAME[c]} tile"></span>`).join('')}</span></div>
@@ -1523,10 +1548,12 @@ function guildArt(n){
     19:`${PT(19)}${NUM('×2','sm')}`,20:`${PT(20)}${NUM('½','sm')}`}[n]||'';
 }
 const shortText=t=>t.length>54?t.slice(0,52).replace(/\s+\S*$/,'')+'…':t;
+/* painted card art (THEME.art.cards[key], THEME.art.guild[n]) fills the window; the icon formula stays as a small badge */
+const PA=(img,html)=>img?`<span class="pa painted" style="background-image:url('${img}')"><span class="pform">${html}</span></span>`:`<span class="pa">${html}</span>`;
 function cardHTML(k,attrs='',extra=''){const d=CARD_DEFS[k];
-  return `<button class="pcard fav ${extra}" ${attrs} aria-label="${esc(d.name)}: ${esc(d.text)}"><span class="pt">${d.name}</span><span class="pa">${cardArt(k)}</span><span class="px">${shortText(d.text)}</span></button>`;}
+  return `<button class="pcard fav ${extra}" ${attrs} aria-label="${esc(d.name)}: ${esc(d.text)}"><span class="pt">${d.name}</span>${PA(T.art.cards&&T.art.cards[k],cardArt(k))}<span class="px">${shortText(d.text)}</span></button>`;}
 function guildCardHTML(n,attrs='',extra=''){
-  return `<button class="pcard gld ${extra}" ${attrs} aria-label="${esc(guildName(n))}: ${esc(guildText(n))}"><span class="pt">${guildName(n)}</span><span class="pa">${guildArt(n)}</span><span class="px">${shortText(guildText(n))}</span><i class="gno">${n}</i></button>`;}
+  return `<button class="pcard gld ${extra}" ${attrs} aria-label="${esc(guildName(n))}: ${esc(guildText(n))}"><span class="pt">${guildName(n)}</span>${PA(T.art.guild&&T.art.guild[n],guildArt(n))}<span class="px">${shortText(guildText(n))}</span><i class="gno">${n}</i></button>`;}
 function backsHTML(n,kind){const ic=ICON(kind==='g'?'guild-card':'card');
   return n?`<span class="backs ${kind}" title="${n} ${kind==='g'?plural(n,W.guildCard,W.guildCards):plural(n,W.card,W.cards)}">${[...Array(Math.min(n,6))].map((_,i)=>`<span class="cback ${kind}" style="--i:${i}">${ic?`<img src="${ic}" alt="">`:''}</span>`).join('')}<b>${n}</b></span>`:'';}
 
@@ -1562,21 +1589,64 @@ function renderStrip(){
 function fitDock(){const d=$('#dock');const h=d.offsetHeight||0;document.body.style.setProperty('--dock-h',h+'px');}
 addEventListener('resize',fitDock);
 function commitMove(pl){if(!pendingMove)return;UI.recapHidden=false;$('#moveBar').hidden=true;fitDock();document.body.classList.remove('has-movebar');pendingMove(pl);}
+const AWARDS=[ // fun titles on the results screen: [stat, title, how it reads]
+  ['steps','Busiest paws',n=>`walked ${n} ${plural(n,'place','places')}`],
+  ['sold','Sharpest haggler',n=>`sold for ${L(n)}`],
+  ['paid','Most generous neighbour',n=>`paid rivals ${L(n)}`],
+  ['deals','Back-alley regular',n=>`${n} ${plural(n,'deal','deals')} with ${G&&G.x?'the Crow, Fox and Forager':'the Crow and Fox'}`],
+  ['caught','Cousin catcher',n=>`caught ${n} ${plural(n,W.family,W.family+'s')}`],
+  ['bet','Lucky bones',n=>`won ${L(n)} at the ${SHORT[9]}`]];
+function awardsFor(g){
+  const out=[];
+  for(const[k,title,say]of AWARDS){const v=g.players.map(q=>(q.st&&q.st[k])||0);const m=Math.max(...v);if(m<=0)continue;
+    const who=g.players.filter((q,i)=>v[i]===m);if(who.length===g.players.length&&g.players.length>1)continue;
+    out.push({title,who,text:say(m)});}
+  return out.slice(0,4);
+}
+function endHTML(g){
+  const rows=g.result.map((i,k)=>{const q=g.players[i];const port=PORT(q.color);
+    const src=Object.entries(q.fsrc||{}).sort((a,b)=>b[1]-a[1]).map(([w,n])=>{const k=Object.keys(PNAME).find(i=>PNAME[i]===w);return `<span class="es-src"><span class="ruby">◆</span>${n} ${esc(k?SHORT[k]:w)}</span>`;}).join('');
+    return `<div class="es-row ${k===0?'win':''}"><span class="es-rk">${k+1}</span>${port?`<span class="portrait c-${q.color}" style="background-image:url('${port}')"></span>`:`<i class="mer c-${q.color}"></i>`}
+      <div class="es-mid"><b>${esc(q.name)}</b>${q.ai?` <span class="tag">AI${q.lvl&&q.lvl!=='normal'?' · '+LEVELS[q.lvl]:''}</span>`:''}<div class="es-srcs">${src||'<span class="muted">No feathers this time</span>'}</div></div>
+      <div class="es-num"><span class="ruby">◆ ${q.rubies}</span><small>${q.lira} ${W.cur}</small></div></div>`;}).join('');
+  const aw=awardsFor(g);
+  return `<div class="es">${rows}</div>${aw.length?`<h4 class="es-h">Market awards</h4><div class="es-aw">${aw.map(a=>`<div><b>${a.title}</b><span>${a.who.map(q=>esc(q.name)).join(' & ')}</span><small>${a.text}</small></div>`).join('')}</div>`:''}
+  <p class="muted es-tie">Ties go to most ${W.cur}, then goods, then ${W.cards}.</p>`;
+}
+function canRematch(){return G&&G.over&&(!ON.code||G.players.some(q=>!q.ai&&ownerOf(q)===ME));}
 function showEnd(){
   if(!G||!G.over)return;
-  const rows=G.result.map((i,k)=>{const q=G.players[i];return `<tr><td>${k+1}</td><td><i class="mer c-${q.color}" style="width:12px;height:12px;vertical-align:-1px"></i> ${esc(q.name)}</td><td class="ruby">◆ ${q.rubies}</td><td>${q.lira}</td><td>${totalGoods(q)}</td></tr>`;}).join('');
-  sheet(`${esc(G.players[G.result[0]].name)} wins`,`<table class="rank"><tr><th>#</th><th>${W.merchant[0].toUpperCase()+W.merchant.slice(1)}</th><th>${W.rubies}</th><th>${W.cur}</th><th>Goods</th></tr>${rows}</table><p class="muted">Ties go to most ${W.cur}, then goods, then ${W.cards}.</p>`,[{label:'Back to the menu',value:'new',primary:true},{label:'Look at the board',value:null}]).then(v=>{if(v==='new')goHome();});
+  const nxt=ON.code&&ON.data&&ON.data.next;
+  const btns=[];
+  if(canRematch())btns.push({label:nxt?'Join the rematch':'Rematch',value:'again',primary:true});
+  btns.push({label:'Back to the menu',value:'new',primary:!canRematch()},{label:'Look at the board',value:null});
+  sheet(`${esc(G.players[G.result[0]].name)} wins`,endHTML(G),btns,{wide:true}).then(v=>{if(v==='new')goHome();if(v==='again')rematch();});
+}
+async function rematch(){
+  if(!ON.code){const cfg=clone(G.cfg||{});cfg.players=G.players.map(q=>({name:q.name,ai:q.ai,lvl:q.lvl}));if(G.tut){cfg.layout='short';cfg.exp=false;}startGame(cfg);return;}
+  const old=ON.code,d=ON.data;
+  if(d&&d.next){enterOnline(d.next);return;}
+  const code=rcode();
+  const g=newGame({players:G.players.map(q=>({name:q.name,ai:q.ai,lvl:q.lvl,owner:q.ai?'ai':ownerOf(q)})),layout:G.cfg&&G.cfg.layout||'short',exp:!!G.x});
+  try{
+    await ON.net.set('games/'+code,{host:ME,created:Date.now(),status:'playing',layout:G.cfg&&G.cfg.layout||'short',exp:!!G.x,version:1,started:Date.now(),
+      seats:g.players.map(q=>({name:q.name,ai:q.ai,owner:q.owner,lvl:q.lvl||null})),state:JSON.stringify(g)});
+    const ok=await ON.net.tx(`games/${old}/next`,c=>c?undefined:code);
+    if(!ok){await ON.net.set('games/'+code,null);const nx=ON.data&&ON.data.next;if(nx)enterOnline(nx);return;}
+    pingPush(code);enterOnline(code);
+  }catch(e){toast("Couldn't start the rematch: "+(e.message||e));}
 }
 function setupSheet(){
   const prev=(G&&G.cfg&&!ON.code)?G.cfg:{players:[{name:lsGet('riverfair-name')||'Player 1',ai:false},{name:AI_NAMES[1],ai:true},{name:AI_NAMES[2],ai:true}],layout:'short'};
   const names=[lsGet('riverfair-name')||'Player 1',...AI_NAMES.slice(1)];
-  const st={n:prev.players.length,players:names.map((n,i)=>prev.players[i]?{name:prev.players[i].name,ai:prev.players[i].ai}:{name:n,ai:true}),layout:prev.layout,exp:!!prev.exp};
+  const st={n:prev.players.length,players:names.map((n,i)=>prev.players[i]?{name:prev.players[i].name,ai:prev.players[i].ai}:{name:n,ai:true}),layout:prev.layout,exp:!!prev.exp,lvl:prev.lvl||lsGet('riverfair-lvl')||'normal'};
   const w=$('#sheetWrap'),s=$('#sheet');s.className='';
   const draw=()=>{
     s.innerHTML=`<h2>New game on this device</h2><div class="form">
       <div><h4>Players</h4><div class="seg" id="nseg">${[2,3,4,5].map(n=>`<button data-n="${n}" class="${st.n===n?'on':''}">${n}</button>`).join('')}</div></div>
       ${st.players.slice(0,st.n).map((pl,i)=>`<div class="prow"><i class="mer c-${COLORS[i]}"></i><input id="pname${i}" value="${esc(pl.name)}" aria-label="Player ${i+1} name" maxlength="16"><div class="seg">${['Human','AI'].map(k=>`<button data-p="${i}" data-ai="${k==='AI'?1:0}" class="${(pl.ai?'AI':'Human')===k?'on':''}">${k}</button>`).join('')}</div></div>`).join('')}
       <div><h4>Board layout</h4><select id="layoutSel"><option value="short" ${st.layout==='short'?'selected':''}>Short paths (learning)</option><option value="order" ${st.layout==='order'?'selected':''}>In order (similar places together)</option><option value="random" ${st.layout==='random'?'selected':''}>Random</option></select></div>
+      ${lvlToggle(st.lvl)}
       ${expToggle(st.exp)}
       <div class="sbtns"><button class="btn primary big" id="goBtn">Start game</button><button class="btn" id="cancelBtn">Cancel</button></div></div>`;
     const keep=()=>st.players.slice(0,st.n).forEach((pl,i)=>{const el=$('#pname'+i);if(el)pl.name=el.value.trim()||('Player '+(i+1));});
@@ -1584,19 +1654,21 @@ function setupSheet(){
     s.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{keep();st.players[+b.dataset.p].ai=b.dataset.ai==='1';draw();});
     $('#layoutSel').onchange=e=>st.layout=e.target.value;
     s.querySelectorAll('[data-exp]').forEach(b=>b.onclick=()=>{keep();st.exp=b.dataset.exp==='1';draw();});
+    s.querySelectorAll('[data-lvl]').forEach(b=>b.onclick=()=>{keep();st.lvl=b.dataset.lvl;draw();});
     $('#cancelBtn').onclick=()=>{w.hidden=true;};
-    $('#goBtn').onclick=()=>{keep();w.hidden=true;startGame({players:st.players.slice(0,st.n).map(p=>({name:cleanName(p.name),ai:p.ai})),layout:st.layout,exp:st.exp});};
+    $('#goBtn').onclick=()=>{keep();w.hidden=true;lsSet('riverfair-lvl',st.lvl);startGame({players:st.players.slice(0,st.n).map(p=>({name:cleanName(p.name),ai:p.ai,lvl:p.ai?st.lvl:undefined})),layout:st.layout,exp:st.exp,lvl:st.lvl});};
   };
   draw();w.hidden=false;
 }
 
+const lvlToggle=v=>`<div><h4>AI skill</h4><div class="seg">${Object.entries(LEVELS).map(([k,l])=>`<button data-lvl="${k}" class="${v===k?'on':''}">${l}</button>`).join('')}</div><p class="muted small">${{easy:'Takes good moves, not always the best. Good for learning.',normal:'Picks the best move it can see this turn.',hard:'Plans two moves ahead and bets smarter at the Tavern.'}[v]}</p></div>`;
 const expToggle=on=>`<div><h4>Expansion</h4><div class="seg">${[['0','Base game'],['1',T.expName||'Expansion']].map(([v,l])=>`<button data-exp="${v}" class="${(on?'1':'0')===v?'on':''}">${l}</button>`).join('')}</div><p class="muted small">Adds 4 places on a 5×4 board: ${W.coffeeLong}, ${NS('trader')}, ${W.guildCards}, the ${PNAME[19]} and 9 new ${W.cards}. Games end at 6 ${W.rubies}.</p></div>`;
 /* ---------- shared helpers for screens ---------- */
 function rid(n){const a='abcdefghijkmnpqrstuvwxyz23456789';let s='';for(let i=0;i<n;i++)s+=a[Math.floor(Math.random()*a.length)];return s;}
 function rcode(){const a='ABCDEFGHJKMNPQRSTUVWXYZ23456789';let s='';for(let i=0;i<5;i++)s+=a[Math.floor(Math.random()*a.length)];return s;}
 const shareLink=code=>location.origin+location.pathname+'?game='+code;
 async function copyText(t){try{await navigator.clipboard.writeText(t);toast('Link copied');}catch(e){toast(t);}}
-function showScreen(name){['home','lobby','table'].forEach(n=>$('#'+n).hidden=n!==name);document.body.classList.toggle('on-home',name==='home'||name==='lobby');document.body.classList.toggle('on-lobby',name==='lobby');if(name!=='table'){$('#myStrip').hidden=true;$('#moveBar').hidden=true;fitDock();}if(name!=='table'){$('#roundInfo').textContent='';document.title=T.name;}$('#codeChip').hidden=!ON.code;if(ON.code)$('#codeChip').textContent='Game '+ON.code;}
+function showScreen(name){['home','lobby','table'].forEach(n=>$('#'+n).hidden=n!==name);document.body.classList.toggle('on-home',name==='home'||name==='lobby');document.body.classList.toggle('on-lobby',name==='lobby');if(name!=='table'){$('#myStrip').hidden=true;$('#moveBar').hidden=true;fitDock();}if(name!=='table'){$('#roundInfo').textContent='';document.title=T.name;}$('#codeChip').hidden=!ON.code;if(ON.code)$('#codeChip').textContent='Game '+ON.code;renderPushBtn();}
 
 /* ---------- online play (Firebase Realtime Database) ---------- */
 const FIREBASE_CONFIG={
@@ -1664,7 +1736,7 @@ function onGame(d){
   clearTimeout(ON.timer);
   if(!d||!d.status){const c=ON.code;leaveOnline();goHome();toast(`There's no game with code ${c}.`);return;}
   ON.data=d;
-  if(!ON.presenceOn){ON.presenceOn=true;ON.net.presence(`games/${ON.code}/presence/${ME}`);}
+  if(!ON.presenceOn){ON.presenceOn=true;ON.net.presence(`games/${ON.code}/presence/${ME}`);sendVis();pushRegister();renderPushBtn();}
   if(d.status==='lobby'){showScreen('lobby');renderLobby();return;}
   showScreen('table');
   if(d.version>ON.version){
@@ -1675,6 +1747,8 @@ function onGame(d){
   if(G.over)UI.phase='over';
   render();
   if(G.over&&!ON.shownEnd){ON.shownEnd=true;showEnd();}
+  if(G.over&&d.next&&ON.nextSeen!==d.next&&canRematch()){ON.nextSeen=d.next;$('#sheetWrap').hidden=true;
+    sheet('Rematch!',`<p>A new game with the same ${W.merchants} has started.</p>`,[{label:'Join the rematch',value:true,primary:true},{label:'Not now',value:false}]).then(v=>{if(v&&ON.data&&ON.data.next)enterOnline(ON.data.next);});}
   maybeDrive();
 }
 function parseState(s){const g=upgradeState(JSON.parse(s));g.players.forEach(p=>p.name=cleanName(p.name)||W.merchant);return g;}
@@ -1692,6 +1766,7 @@ async function maybeDrive(){
     const out=JSON.stringify(ctx.G),over=ctx.G.over;
     ON.driving=false;clearTimeout(ON.liveT);ON.liveT=null;
     const ok=await ON.net.tx('games/'+code,c=>{if(!c||c.version!==base)return;c.state=out;c.version=base+1;c.live=null;if(over)c.status='over';return c;});
+    if(ok)pingPush(code);
     if(!ok&&ON.code===code)toast('Another player moved first. The board has been refreshed.');
   }catch(e){if(e!==ABORT){console.error(e);toast('Something went wrong: '+e.message);}}
   finally{if(ON.drive===tok)ON.driving=false;}
@@ -1705,6 +1780,36 @@ async function rejoinSeat(i){
   const ok=await ON.net.tx(`games/${ON.code}/claims`,c=>{c=c||{};c['s'+i]=ME;return c;});
   if(ok)toast(`You're playing as ${q.name}.`);
 }
+
+/* ---------- turn alerts (web push through a small Cloudflare Worker, see server/push-worker.js) ---------- */
+const PUSH_URL=''; // the worker's address once it is deployed, e.g. 'https://riverfair-push.example.workers.dev'
+const PUSH_KEY='BJGQXwNifW7R-b7y8RBtN5h13ehL1O2sLRRoEkDfymoVYFQ36pm6h-u7yEZcIrshlPfMfj1kiS3pWkyXCrBtHqg';
+const PUSH_OK=()=>!!PUSH_URL&&'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
+const pushOn=()=>lsGet('riverfair-push')==='on'&&PUSH_OK()&&Notification.permission==='granted';
+function pingPush(code){if(!PUSH_URL||!code)return;fetch(PUSH_URL.replace(/\/$/,'')+'/notify',{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({code})}).catch(()=>{});}
+async function pushSub(){
+  const reg=await navigator.serviceWorker.ready;
+  const key=Uint8Array.from(atob(PUSH_KEY.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
+  return (await reg.pushManager.getSubscription())||reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});
+}
+async function pushRegister(){ // store this device's alert address with the current game
+  if(!ON.code||!ON.net||!pushOn())return;
+  try{const sub=await pushSub();await ON.net.set(`games/${ON.code}/push/${ME}`,sub.toJSON());}catch(e){console.warn('push',e);}
+}
+function sendVis(){if(ON.code&&ON.net&&ON.presenceOn)ON.net.set(`games/${ON.code}/vis/${ME}`,!document.hidden);}
+document.addEventListener('visibilitychange',sendVis);
+async function togglePush(){
+  if(pushOn()){lsSet('riverfair-push','off');if(ON.code&&ON.net)ON.net.set(`games/${ON.code}/push/${ME}`,null);renderPushBtn();toast('Turn alerts are off.');return;}
+  if(IS_IOS&&!IS_APP){sheet('Turn alerts on iPhone',`<p>iPhones only allow alerts from installed apps. Install ${T.name} first (Share, then <b>Add to Home Screen</b>), open it from your home screen, and turn alerts on there.</p>`,[{label:'Got it',value:null,primary:true}]);return;}
+  if(Notification.permission==='denied'){sheet('Alerts are blocked',`<p>This browser is blocking notifications from ${T.name}. Allow them in the site settings (the icon left of the address), then try again.</p>`,[{label:'Got it',value:null,primary:true}]);return;}
+  const perm=await Notification.requestPermission();
+  if(perm!=='granted'){toast('No alerts, then. You can turn them on any time.');return;}
+  lsSet('riverfair-push','on');renderPushBtn();await pushRegister();
+  toast(`You'll get an alert when it's your turn and you're away.`);
+}
+function renderPushBtn(){const b=$('#pushBtn');if(!b)return;b.hidden=!(ON.code&&PUSH_OK());
+  const on=pushOn();b.setAttribute('aria-pressed',String(on));b.title=on?'Turn alerts are on':'Get an alert when it is your turn';
+  b.innerHTML=`<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" fill="${on?'currentColor':'none'}" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M10 20a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="2" fill="none"/>${on?'':'<path d="M3 3l18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'}</svg><span class="pb-l">${on?'Alerts on':'Turn alerts'}</span>`;}
 
 /* ---------- lobby ---------- */
 function renderLobby(){
@@ -1725,7 +1830,7 @@ function renderLobby(){
     <div class="lb-tablehead"><h3 class="lb-h3 big">Your table</h3><span>${seated} of ${seats.length} ${W.merchants} here</span></div>
     ${mine<0&&open?`<label class="lb-name" for="joinName">Your name<input id="joinName" maxlength="16" value="${esc(keepName)}" placeholder="Type your name, then take a seat"></label>`:''}
     <div class="lb-seats">${seats.map((s,i)=>{
-      const st=s.ai?`<span class="lb-tag">AI</span>`:s.owner==='-'?'<span class="lb-tag">Open seat</span>':`<span class="lb-here ${here[s.owner]?'on':''}"><i></i>${here[s.owner]?'Here':'Away'}</span>`;
+      const st=s.ai?`<span class="lb-tag">AI${s.lvl&&s.lvl!=='normal'?' · '+LEVELS[s.lvl]:''}</span>`:s.owner==='-'?'<span class="lb-tag">Open seat</span>':`<span class="lb-here ${here[s.owner]?'on':''}"><i></i>${here[s.owner]?'Here':'Away'}</span>`;
       let act='';
       if(s.owner==='-'&&mine<0)act=`<button class="btn primary" data-take="${i}">Take this seat</button>`;
       if(mine>=0&&s.owner==='-')act=`<button class="btn" data-ai="${i}">Fill with AI</button>`;
@@ -1737,7 +1842,7 @@ function renderLobby(){
   <p class="lb-quote">A seat saved. A market waiting.</p>`;
   $('#copyBtn').onclick=()=>copyText(link);
   document.querySelectorAll('[data-take]').forEach(b=>b.onclick=()=>takeSeat(+b.dataset.take));
-  document.querySelectorAll('[data-ai]').forEach(b=>b.onclick=()=>ON.net.set(`games/${ON.code}/seats/${b.dataset.ai}`,{name:AI_NAMES[+b.dataset.ai]||W.merchant,ai:true,owner:'ai'}));
+  document.querySelectorAll('[data-ai]').forEach(b=>b.onclick=()=>ON.net.set(`games/${ON.code}/seats/${b.dataset.ai}`,{name:AI_NAMES[+b.dataset.ai]||W.merchant,ai:true,owner:'ai',lvl:ON.data.lvl||'normal'}));
   document.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>ON.net.set(`games/${ON.code}/seats/${b.dataset.open}`,{name:'Friend',ai:false,owner:'-'}));
   const sb=$('#startBtn');if(sb)sb.onclick=startOnline;
 }
@@ -1749,15 +1854,16 @@ async function takeSeat(i){
   if(!ok)toast('Someone just took that seat.');
 }
 async function startOnline(){
-  const d=ON.data;const g=newGame({players:d.seats.map(s=>({name:s.name,ai:s.ai,owner:s.owner})),layout:d.layout,exp:!!d.exp});
+  const d=ON.data;const g=newGame({players:d.seats.map(s=>({name:s.name,ai:s.ai,owner:s.owner,lvl:s.lvl})),layout:d.layout,exp:!!d.exp,lvl:d.lvl});
   const out=JSON.stringify(g);
   await ON.net.tx('games/'+ON.code,c=>{if(!c||c.status!=='lobby'||(c.seats||[]).some(s=>s.owner==='-'))return;c.status='playing';c.state=out;c.version=1;c.started=Date.now();return c;});
+  pingPush(ON.code);
 }
 async function createOnline(cfg){
   const btn=$('#createBtn');if(btn){btn.disabled=true;btn.textContent='Creating…';}
   try{
     const net=await getNet();const code=rcode();
-    await net.set('games/'+code,{host:ME,created:Date.now(),status:'lobby',layout:cfg.layout,exp:!!cfg.exp,version:0,seats:cfg.seats});
+    await net.set('games/'+code,{host:ME,created:Date.now(),status:'lobby',layout:cfg.layout,exp:!!cfg.exp,lvl:cfg.lvl||'normal',version:0,seats:cfg.seats});
     enterOnline(code);
   }catch(e){toast("Couldn't create the game: "+(e.message||e));if(btn){btn.disabled=false;btn.textContent='Create game';}}
 }
@@ -1774,7 +1880,7 @@ async function installApp(){
     :`<p>Open your browser's menu (⋮) and choose <b>Install app</b> or <b>Add to Home screen</b>.</p><p class="muted">${T.name} then opens full screen from its own icon, and local games work offline.</p>`,[{label:'Got it',value:null,primary:true}]);
 }
 /* ---------- home ---------- */
-const HOME={n:2,seats:['friend','friend','ai','ai','ai'],layout:'short',exp:false};
+const HOME={n:2,seats:['friend','friend','ai','ai','ai'],layout:'short',exp:false,lvl:lsGet('riverfair-lvl')||'normal'};
 function goHome(){tutStop();leaveOnline();GEN++;pendingMove=pendingEnd=null;$('#sheetWrap').hidden=true;showScreen('home');renderHome();}
 function renderHome(){
   let saved=null;try{saved=JSON.parse(lsGet(STORE)||'null');}catch(e){}
@@ -1826,19 +1932,21 @@ function onlineSheet(){
       <div><h4>Players</h4><div class="seg" id="hn">${[2,3,4,5].map(n=>`<button data-n="${n}" class="${HOME.n===n?'on':''}">${n}</button>`).join('')}</div></div>
       ${[...Array(HOME.n-1)].map((_,k)=>`<div class="prow"><i class="mer c-${COLORS[k+1]}"></i><span>Seat ${k+2}</span><div class="seg">${['friend','ai'].map(v=>`<button data-s="${k+1}" data-v="${v}" class="${HOME.seats[k+1]===v?'on':''}">${v==='ai'?'AI':'Friend'}</button>`).join('')}</div></div>`).join('')}
       <div><h4>Board layout</h4><select id="homeLayout"><option value="short" ${HOME.layout==='short'?'selected':''}>Short paths (learning)</option><option value="order" ${HOME.layout==='order'?'selected':''}>In order</option><option value="random" ${HOME.layout==='random'?'selected':''}>Random</option></select></div>
+      ${HOME.seats.slice(1,HOME.n).includes('ai')?lvlToggle(HOME.lvl):''}
       ${expToggle(HOME.exp)}
       <div class="sbtns"><button class="btn primary big" id="createBtn">Create game</button><button class="btn" id="cancelBtn">Cancel</button></div></div>`;
     const keep=()=>{name=$('#homeName').value;};
     s.querySelectorAll('#hn [data-n]').forEach(b=>b.onclick=()=>{keep();HOME.n=+b.dataset.n;draw();});
     s.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{keep();HOME.seats[+b.dataset.s]=b.dataset.v;draw();});
     s.querySelectorAll('[data-exp]').forEach(b=>b.onclick=()=>{keep();HOME.exp=b.dataset.exp==='1';draw();});
+    s.querySelectorAll('[data-lvl]').forEach(b=>b.onclick=()=>{keep();HOME.lvl=b.dataset.lvl;draw();});
     $('#homeLayout').onchange=e=>HOME.layout=e.target.value;
     $('#cancelBtn').onclick=()=>{w.hidden=true;};
     $('#createBtn').onclick=()=>{
       const nm=cleanName($('#homeName').value);if(!nm){toast('Type your name first.');$('#homeName').focus();return;}
       lsSet('riverfair-name',nm);w.hidden=true;
-      const seats=[...Array(HOME.n)].map((_,i)=>i===0?{name:nm,ai:false,owner:ME}:HOME.seats[i]==='ai'?{name:AI_NAMES[i],ai:true,owner:'ai'}:{name:'Friend',ai:false,owner:'-'});
-      createOnline({seats,layout:HOME.layout,exp:HOME.exp});
+      const seats=[...Array(HOME.n)].map((_,i)=>i===0?{name:nm,ai:false,owner:ME}:HOME.seats[i]==='ai'?{name:AI_NAMES[i],ai:true,owner:'ai',lvl:HOME.lvl}:{name:'Friend',ai:false,owner:'-'});
+      lsSet('riverfair-lvl',HOME.lvl);createOnline({seats,layout:HOME.layout,exp:HOME.exp,lvl:HOME.lvl});
     };
   };
   draw();w.hidden=false;const f=$('#homeName');if(f&&!f.value)f.focus();
@@ -1893,6 +2001,20 @@ function tutSteps(){
     {when:'post',title:'You know the basics',text:`Every turn works this way: move, leave an ${W.assistant}, take the action, deal with whoever is there.</p><p>Other ways to earn ${W.rubies}: deliver goods at the ${PNAME[13]}, buy one at ${PNAME[16]}, add your third crate at ${PNAME[1]}, or take both badges at the ${PNAME[15]}. Your ${W.family} at the ${PNAME[12]} gives a free action anywhere.</p><p>Tap any place to read what it does, and use <b>Suggest</b> when you're stuck. The game is yours now.`,next:'Play on',finish:true}
   ];
 }
+/* Mushrooms & Guilds: a short tour, shown once per device at the start of your first expansion game.
+   It only explains; nothing is restricted. Replay it from How to play. */
+function xSteps(){
+  const tile=n=>`.tile[data-pl="${n}"]`,C=s=>s[0].toUpperCase()+s.slice(1);
+  return [
+    {when:'move',spot:'#board',title:T.expName||'The expansion',text:`This game adds four places, a new resource called ${W.coffeeLong}, guild cards, and a wandering forager. Here's a quick tour before you move. The game now ends at 6 ${W.rubies}.`,next:'Show me'},
+    {when:'move',spot:tile(17),title:C(W.coffeeLong),text:()=>`You have ${TEA(cur(G).coffee)} right now. At the ${PNAME[17]} you can pay 2 ${W.cur}, 1 good or a ${W.card}, each once per visit, and each gets you 2 ${W.coffee}. The ${PNAME[6]} also gives you 1.`,next:'Next'},
+    {when:'move',spot:tile(20),title:`${W.rubies} at the ${PNAME[20]}`,text:()=>`Here ${W.coffee} become ${W.rubies}. The first costs ${TEA(6)}, and every one taken makes the next cost 1 more (now ${chCost(G)}).`,next:'Next'},
+    {when:'move',spot:tile(18),title:C(W.guildCards),text:`The ${PNAME[18]} gives you a mushroom and 2 ${W.guildCards}, and you keep 1. On a later turn you can play a ${W.guildCard} <b>instead of moving</b>. It replaces your whole turn with one strong action, so save it for when a normal move would be weak.`,next:'Next'},
+    {when:'move',spot:tile(19),title:PNAME[19],text:`Spend ${W.coffee} with the regulars. Put up a ${W.barrier} that only you can cross, buy a favour (the ${W.moveTile} lets you move any distance in a straight line; ${W.encTile} makes encounters free), or pay ${TEA(4)} plus goods to bribe your way to a ${W.ruby}.`,next:'Next'},
+    {when:'move',spot:()=>tile(G.trader),title:NT('trader'),text:`${NSC('trader')} wanders the board like ${NS('gov')} and ${NS('smug')}. End your move where she is and you can buy ${TEA(1)} for 2 ${W.cur} or 1 good.`,next:'Got it',finish:true}
+  ];
+}
+function startXLesson(){TUT={kind:'exp',i:0,ai:[],dice:[],steps:xSteps(),seen:-1};lsSet('riverfair-xlesson','1');render();}
 function startTutorial(){
   tutStop();leaveOnline();showScreen('table');GEN++;pendingMove=pendingEnd=null;$('#sheetWrap').hidden=true;
   G=tutSetup();UI={phase:'idle',sel:null,mode:'normal',busy:false};
@@ -1908,19 +2030,19 @@ function tutStop(){TUT=null;const c=$('#coach');if(c)c.hidden=true;document.quer
 function tutVisible(el){return el&&el.getClientRects().length>0;}
 function tutUpdate(){
   if(!TUT)return;
-  if(!G||!G.tut){tutStop();return;}
-  const mine=G.current===0&&!G.over;
+  if(!G||(!G.tut&&TUT.kind!=='exp')){tutStop();return;}
+  const mine=TUT.kind==='exp'?(isMine(cur(G))&&(!ON.code||ON.driving)&&!G.over):(G.current===0&&!G.over);
   tutAdvance();
   let c=$('#coach');if(!c){c=document.createElement('div');c.id='coach';c.setAttribute('role','dialog');c.setAttribute('aria-live','polite');document.body.appendChild(c);}
   document.querySelectorAll('.tut-spot').forEach(e=>e.classList.remove('tut-spot'));
   const s=tutStep();
   if(TUT.i>=TUT.steps.length||!mine||UI.phase!==s.when){c.hidden=true;return;}
   if(TUT.seen!==TUT.i){TUT.seen=TUT.i;if(s.enter)s.enter();TUT.scroll=true;}
-  const sels=[].concat(s.spot||[]);let el=null;
+  const sels=[].concat((typeof s.spot==='function'?s.spot():s.spot)||[]);let el=null;
   for(const q of sels){const e=document.querySelector(q);if(tutVisible(e)){el=e;break;}}
   if(el)el.classList.add('tut-spot');
   const n=TUT.steps.length;
-  c.innerHTML=`<div class="co-top"><span class="co-step">Lesson · ${TUT.i+1} of ${n}</span><span class="co-r"><button class="co-skip co-mus" id="coMus" aria-pressed="${MUS.on}">♪ Music ${MUS.on?'on':'off'}</button><button class="co-skip" id="coSkip">Skip lesson</button></span></div>
+  c.innerHTML=`<div class="co-top"><span class="co-step">${TUT.kind==='exp'?'Tour':'Lesson'} · ${TUT.i+1} of ${n}</span><span class="co-r"><button class="co-skip co-mus" id="coMus" aria-pressed="${MUS.on}">♪ Music ${MUS.on?'on':'off'}</button><button class="co-skip" id="coSkip">${TUT.kind==='exp'?'Skip':'Skip lesson'}</button></span></div>
     <div class="co-bar"><i style="width:${Math.round(100*(TUT.i+1)/n)}%"></i></div>
     <h3>${s.title}</h3><p>${typeof s.text==='function'?s.text():s.text}</p>
     ${s.next?`<div class="co-btns"><button class="btn primary" id="coNext">${s.next}</button></div>`:`<p class="co-do">${s.end?'Waiting for you to end your turn…':s.only?'Waiting for your move…':'Waiting for you…'}</p>`}`;
@@ -1929,7 +2051,7 @@ function tutUpdate(){
   c.classList.toggle('at-top',!!r&&(r.top+r.height/2)>innerHeight*.52);
   if(el&&TUT.scroll){TUT.scroll=false;const top=r.top<70,low=r.bottom>innerHeight-(c.offsetHeight+40);if(top||low)el.scrollIntoView({behavior:REDUCED?'auto':'smooth',block:'center'});}
   $('#coMus').onclick=()=>{setMusic(!MUS.on);render();};
-  $('#coSkip').onclick=()=>{tutStop();toast('Lesson skipped. Keep playing, or open the Menu.');render();};
+  $('#coSkip').onclick=()=>{const x=TUT.kind==='exp';tutStop();toast(x?'You can replay the tour from How to play.':'Lesson skipped. Keep playing, or open the Menu.');render();};
   const nb=$('#coNext');if(nb)nb.onclick=()=>{if(s.finish){tutStop();render();return;}TUT.i++;render();};
 }
 
@@ -1939,6 +2061,7 @@ $('#rulesBtn').onclick=rulesSheet;
 $('#soundBtn').onclick=()=>setSound(!SND.on);
 $('#musicBtn').onclick=()=>setMusic(!MUS.on);
 $('#codeChip').onclick=()=>copyText(shareLink(ON.code));
+$('#pushBtn').onclick=togglePush;
 (function boot(){
   if(T.fonts){if(T.fonts.link){const l=document.createElement('link');l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family='+T.fonts.link+'&display=swap';document.head.appendChild(l);}
     if(T.fonts.display)document.documentElement.style.setProperty('--f-display',T.fonts.display);
