@@ -958,8 +958,28 @@ function renderMusicBtn(){const cm=$('#coMus');if(cm){cm.setAttribute('aria-pres
 addEventListener('pointerdown',()=>{if(MUS.on&&!MUS.timer&&!(MUS.el&&!MUS.el.paused))musicStart();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)musicStop();else musicStart();});
 function setSound(on){SND.on=on;lsSet('riverfair-sound',on?'on':'off');if(on){actx();sfx('coin');}renderSoundBtn();}
-function renderSoundBtn(){const b=$('#soundBtn');b.setAttribute('aria-pressed',String(SND.on));b.title=SND.on?'Sound is on':'Sound is off';b.innerHTML=`<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/>${SND.on?'<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>':'<path d="M16 9l5 6M21 9l-5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'}</svg><span class="sr">${SND.on?'Sound on':'Sound off'}</span>`;}
+function renderSoundBtn(){const b=$('#soundBtn');if(!b)return;b.setAttribute('aria-pressed',String(SND.on));b.title=SND.on?'Sound is on':'Sound is off';b.innerHTML=`<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/>${SND.on?'<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>':'<path d="M16 9l5 6M21 9l-5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'}</svg><span class="sr">${SND.on?'Sound on':'Sound off'}</span>`;}
 
+/* ---------- settings: sound, music and how the board shows where you can go ---------- */
+const DIM={on:lsGet('riverfair-dim')!=='off'};
+function applyDim(){document.body.classList.toggle('no-dim',!DIM.on);}
+function settingsSheet(){
+  const w=$('#sheetWrap'),s=$('#sheet');s.className='';
+  const row=(k,label,sub,on)=>`<button class="set-row" data-set="${k}" role="switch" aria-checked="${on}"><span><b>${label}</b><small>${sub}</small></span><i class="sw ${on?'on':''}"></i></button>`;
+  const draw=()=>{
+    s.innerHTML=`<h2>Settings</h2><div class="sbody set-list">
+      ${row('sound','Sound effects','Coins, dice, footsteps and fanfares.',SND.on)}
+      ${row('music','Music','A gentle market-town tune that loops.',MUS.on)}
+      ${row('dim','Dim places you can’t reach','On your turn, fades the places out of reach so the ones you can move to stand out.',DIM.on)}
+    </div><div class="sbtns"><button class="btn primary" id="setDone">Done</button></div>`;
+    s.querySelectorAll('[data-set]').forEach(b=>b.onclick=()=>{const k=b.dataset.set;
+      if(k==='sound')setSound(!SND.on);else if(k==='music')setMusic(!MUS.on);
+      else{DIM.on=!DIM.on;lsSet('riverfair-dim',DIM.on?'on':'off');applyDim();}
+      draw();});
+    $('#setDone').onclick=()=>{w.hidden=true;if(G&&TUT)render();};
+  };
+  draw();w.hidden=false;
+}
 /* ---------- board-game effects: sliding tokens, gain pop-ups, dice, ruby flourish ---------- */
 const FX={prev:null,quiet:false,rollSeen:null};
 const FACE={}; // standees face the way they last walked
@@ -2061,8 +2081,7 @@ function tutUpdate(){
 /* ---------- boot ---------- */
 $('#newBtn').onclick=goHome;
 $('#rulesBtn').onclick=rulesSheet;
-$('#soundBtn').onclick=()=>setSound(!SND.on);
-$('#musicBtn').onclick=()=>setMusic(!MUS.on);
+$('#setBtn').onclick=settingsSheet;
 $('#codeChip').onclick=()=>copyText(shareLink(ON.code));
 $('#pushBtn').onclick=togglePush;
 (function boot(){
@@ -2070,7 +2089,7 @@ $('#pushBtn').onclick=togglePush;
     if(T.fonts.display)document.documentElement.style.setProperty('--f-display',T.fonts.display);
     if(T.fonts.tile)document.documentElement.style.setProperty('--f-tile',T.fonts.tile);}
   document.title=T.name;$('#brandName').textContent=T.name;$('#footText').textContent=T.foot;
-  renderSoundBtn();renderMusicBtn();
+  renderSoundBtn();renderMusicBtn();applyDim();
   document.body.classList.add('t-'+T.id);
   initTips();
   const fe=ICON('feather');

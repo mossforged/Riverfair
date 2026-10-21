@@ -782,3 +782,17 @@ body.t-riverfair:not(.on-home) .board{box-shadow:0 0 0 1px rgba(201,162,74,.6),0
 /* painted card art */
 .pcard .pa.painted{position:relative;background:#c9a26a center/cover no-repeat;padding:0;justify-content:flex-end;align-items:flex-end}
 .pcard .pa.painted .pform{display:inline-flex;align-items:center;gap:1px;margin:2px;padding:1px 3px;border-radius:5px;background:rgba(251,243,223,.92);box-shadow:0 1px 3px rgba(0,0,0,.35);transform:scale(.62);transform-origin:bottom right}
+/* ================= settings window, and gentler dimming of places out of reach ================= */
+.tile.dim{opacity:.86;filter:saturate(.8)}
+.tile.art.dim{opacity:1;filter:saturate(.7) brightness(.95)}
+body.no-dim .tile.dim,body.no-dim .tile.art.dim{opacity:1;filter:none}
+.set-list{display:grid;gap:8px;text-align:left!important}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;padding:12px 14px;border-radius:12px;border:1px solid #d8c08a;background:#fffaf0;color:#2b1f14;font:inherit;text-align:left;cursor:pointer}
+.set-row span{display:grid;gap:2px}
+.set-row b{font-size:15px}
+.set-row small{font-size:12.5px;color:#6d5a45;line-height:1.35}
+.set-row .sw{flex:none;position:relative;width:44px;height:26px;border-radius:999px;background:#d8c9a8;box-shadow:inset 0 1px 2px rgba(0,0,0,.2);transition:background .15s}
+.set-row .sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .15s}
+.set-row .sw.on{background:#3d6b45}
+.set-row .sw.on::after{transform:translateX(18px)}
+.set-row:focus-visible{outline:3px solid var(--turq);outline-offset:2px}

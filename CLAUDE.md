@@ -107,6 +107,10 @@ Read this first. It records what the game is, how the code is laid out, the deci
 - A music toggle (note icon in the header, plus "♪ Music" on the tutorial coach card) plays a looping 6/8 tune in D major, synthesised with Web Audio like the sound effects: `MEL`, `CHORD`, `musSchedule()`. Off by default; the choice is saved as `riverfair-music`. It pauses while the tab is hidden.
 - To use a real recording instead, add `music: 'art/music/theme.mp3'` (or similar) to `themes/riverfair.js`; `musicStart()` then plays that file on a loop. Add the file to `tools-precache.py`'s list if it should work offline (it only collects `.webp`/`.png`).
 
+## Settings
+- The header's sliders button opens a Settings window (`settingsSheet()`) with three switches: sound effects, music, and "Dim places you can't reach" (`riverfair-dim`, on by default; off adds `body.no-dim`). Sound and music moved here from the header to free space on phones; the tutorial coach card keeps its own music switch.
+- The dimming was softened at the owner's request: art tiles out of reach now keep 70% of their colour (was 45%).
+
 ## Board figures
 - Tiles with standing figures get a `.shade` layer that blurs and darkens the painting behind them, and standees get a cream cut-out outline. Groups of 3+ spread across the tile.
 
