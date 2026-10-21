@@ -104,7 +104,7 @@ Read this first. It records what the game is, how the code is laid out, the deci
 - `THEME.art.cards[key]` and `THEME.art.guild[n]` (paths under `art/cards/`) fill the card's picture window; the icon formula stays as a small badge in the corner. Square images work best. Process: one shared style prompt plus a one-line subject per card, about five cards per batch.
 
 ## Music
-- A music toggle (note icon in the header, plus "♪ Music" on the tutorial coach card) plays a looping 6/8 tune in D major, synthesised with Web Audio like the sound effects: `MEL`, `CHORD`, `musSchedule()`. Off by default; the choice is saved as `riverfair-music`. It pauses while the tab is hidden.
+- A music switch (in the Settings window, plus "♪ Music" on the tutorial coach card) plays a looping 6/8 tune in D major, synthesised with Web Audio like the sound effects: `MEL`, `CHORD`, `musSchedule()`. Off by default; the choice is saved as `riverfair-music`. It pauses while the tab is hidden.
 - To use a real recording instead, add `music: 'art/music/theme.mp3'` (or similar) to `themes/riverfair.js`; `musicStart()` then plays that file on a loop. Add the file to `tools-precache.py`'s list if it should work offline (it only collects `.webp`/`.png`).
 
 ## Settings
