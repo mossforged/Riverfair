@@ -88,7 +88,8 @@ Read this first. It records what the game is, how the code is laid out, the deci
 
 ## AI skill
 - `p.lvl` is `easy`, `normal` or `hard` for AI players; one "AI skill" choice at setup (local and online, saved as `riverfair-lvl`) applies to all AI seats. Shown as "AI · Hard" tags.
-- Easy picks among the top 4 moves (40/25/20/15%), skips good guild cards 40% of the time and bets a random 4–9 at the Tavern. Normal is the original AI. Hard re-ranks its top 5 moves by also scoring the best follow-up move (`rankMoves(...,look)`) and bets 7 at the Tavern.
+- Easy's handicaps live in `EASY` in `game.js`: it takes the best, 2nd or 3rd-ranked move 70/18/12% of the time, ignores a good guild card 15% of the time and bets 6 or 7 at the Tavern. Normal is the original AI. Hard re-ranks its top 5 moves by also scoring the best follow-up move (`rankMoves(...,look)`) and bets 7 at the Tavern.
+- Measured win rates (hundreds of bot games): Easy vs two Normals wins about 21% (a fair share would be 33%). In Easy vs Normal vs Hard, Hard wins about 70%, Normal about 17% and Easy about 8%. Hard is strong enough that even Normal rarely wins that three-way. The owner asked for Easy to be a bit stronger than the first version (which won about 6% against two Normals).
 
 ## End of game
 - Players carry `fsrc` (Gold Feathers by place name, from `gainRuby`) and `st` stats (`steps`, `paid`, `sold`, `deals`, `caught`, `bet`, via `stat()`). The results sheet (`endHTML`) shows each player's feather sources and up to four "Market awards".

@@ -28,6 +28,9 @@ const CARD_DEFS={};for(const k in CARD_COUNTS)if(T.cards[k])CARD_DEFS[k]={n:CARD
 const COLORS=['red','green','yellow','teal','white'];
 const AI_NAMES=T.aiNames;
 const LEVELS={easy:'Easy',normal:'Normal',hard:'Hard'};
+/* Easy's handicaps, tuned so it wins about 1 game in 8 against Normal and Hard: how often it takes the best,
+   2nd, 3rd or 4th-ranked move, how often it ignores a good guild card, and its Tavern bets */
+var EASY={w:[.7,.18,.12],skip:.15,bet:[6,7]};
 const lvlOf=p=>p&&p.lvl||'normal';
 const STORE='riverfair-table-v1';
 (function(){try{['table-v1','name','sound','me','preview'].forEach(k=>{const o='istan'+'bul-'+k,n='riverfair-'+k;
@@ -550,7 +553,7 @@ async function aiDecide(ctx,p,kind,d){
     if(d.key==='green'&&p.lira<4)return null;
     if(d.key==='envoyAny')return spareGood(g,p,d.options);
     return bestGood(g,p,d.options);
-  case 'pickNumber':{const l=lvlOf(p);if(l==='easy')return 4+rnd(6);if(l==='hard')return p.tiles.r?8:7;return p.tiles.r?8:6;}
+  case 'pickNumber':{const l=lvlOf(p);if(l==='easy')return EASY.bet[0]+rnd(EASY.bet[1]-EASY.bet[0]+1);if(l==='hard')return p.tiles.r?8:7;return p.tiles.r?8:6;}
   case 'dice':{const s=d.dice[0]+d.dice[1],lo=Math.min(...d.dice),four=s-lo+4;
     if(d.purpose==='tea'){if(s>=d.target)return 'keep';if(lo<4&&four>=d.target)return 'four';return 'reroll';}
     const br=x=>x>=11?3:x>=9?2:x>=7?1:0;
@@ -659,10 +662,10 @@ async function aiTurn(ctx){
   const ranked=await rankMoves(g,p,modes,lvl==='hard');
   let best=ranked[0];
   if(lvl==='easy'&&ranked.length>1){ // Easy: often settles for a decent move rather than the best one
-    const w=[.4,.25,.2,.15],pool=ranked.slice(0,4);let r=Math.random()*w.slice(0,pool.length).reduce((a,b)=>a+b,0);
+    const w=EASY.w,pool=ranked.slice(0,w.length);let r=Math.random()*w.slice(0,pool.length).reduce((a,b)=>a+b,0);
     for(let k=0;k<pool.length;k++){r-=w[k];if(r<=0){best=pool[k];break;}}}
   checkGen(ctx);
-  if(g.x&&p.guild&&p.guild.length&&!(lvl==='easy'&&Math.random()<.4)){
+  if(g.x&&p.guild&&p.guild.length&&!(lvl==='easy'&&Math.random()<EASY.skip)){
     let gb=null,gv=-1e9;
     for(const n of [...new Set(p.guild)]){
       if(!guildPlayable(g,p,n))continue;
