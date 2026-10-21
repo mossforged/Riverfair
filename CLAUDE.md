@@ -77,10 +77,14 @@ Read this first. It records what the game is, how the code is laid out, the deci
 
 ## Guided tutorial ("Learn to play" on the title screen)
 - `startTutorial()` builds a real two-player base game (`tutSetup()`): the player (saved name, or "Hob") against the AI Bramble, on the short layout, with fixed coins, cards, Crow, Fox and Riverside order board. The game carries `G.tut=true` and is never saved.
-- `tutSteps()` is the script: 20 coach cards over six turns (Wool Loft, Wool badge while paying a Peddler, a favour card, Herb Cellar, Herb badge for a Gold Feather, Town Well, selling at Riverside with the Fox there). Each step has `when` ('move' or 'post'), optional `only` (the one place you may move to), `spot` (selectors to highlight; the first visible one wins), and either a `next` button or an `until()` goal.
+- `tutSteps()` is the script: 21 coach cards over six turns (Wool Loft and filling to cart capacity, Wool badge while paying a Peddler, a favour card, Herb Cellar, Herb badge for a Gold Feather, Town Well, selling at Riverside with the Fox there). Each step has `when` ('move' or 'post'), optional `only` (the one place you may move to), `spot` (selectors to highlight; the first visible one wins), and either a `next` button or an `until()` goal. `text` may be a function when it depends on the game (the Town Well card mentions Bramble's crate only if he bought one).
 - While the script runs, only the taught place is reachable, Suggest and Undo are hidden, End turn shows only on end-turn steps, and lodge claims have no Skip. Bramble's first five moves come from `TUT.ai`, and `TUT.dice` fixes the one roll that matters (the paid Peddler walks to Rat Alley). `SIMN` stops AI simulations from using those dice.
 - When the script ends (or the player taps Skip lesson) the same game continues as normal free play.
 - If you change the short layout, starting setup, or encounter rules, re-run the tutorial: its moves are planned around them.
+
+## Music
+- A music toggle (note icon in the header, plus "♪ Music" on the tutorial coach card) plays a looping 6/8 tune in D major, synthesised with Web Audio like the sound effects: `MEL`, `CHORD`, `musSchedule()`. Off by default; the choice is saved as `riverfair-music`. It pauses while the tab is hidden.
+- To use a real recording instead, add `music: 'art/music/theme.mp3'` (or similar) to `themes/riverfair.js`; `musicStart()` then plays that file on a loop. Add the file to `tools-precache.py`'s list if it should work offline (it only collects `.webp`/`.png`).
 
 ## Testing that was used
 - Playwright (Chromium is preinstalled) against `python3 -m http.server`.
@@ -108,6 +112,7 @@ Read this first. It records what the game is, how the code is laid out, the deci
   - Turn order: the starting player is random, and seating follows the setup order.
 
 ## Open items
+- **Music:** the synthesised tune is a placeholder-quality first pass. The owner may replace it with an AI-generated track (see Music above).
 - The owner's real playtest with a friend hasn't happened yet. Expect feedback on pacing, clarity and online quirks.
 - **Turn notifications** for slow games played over a day are designed but not built. They need a small server: either Firebase Cloud Functions (needs the paid plan with a card on file) or a free Cloudflare Worker. The owner hasn't chosen.
 - **Unused art:** the `charter` icon.

@@ -871,6 +871,67 @@ const SFX={
   bad(){tone(196,0,.22,'triangle',.12,147);}
 };
 function sfx(n){if(!SND.on||!SND.ctx)return;try{if(SND.ctx.state==='suspended')SND.ctx.resume();SFX[n]();}catch(e){}}
+/* ---------- music: a gentle market-town tune, synthesised so it needs no files ----------
+   6/8 in D major, 32 bars (A B A B, the repeat adds a harp arpeggio), about a minute per loop.
+   Off by default; the choice is remembered. If THEME.music names an audio file, that plays instead. */
+const MUS={on:lsGet('riverfair-music')==='on',timer:null,bus:null,pos:0,next:0,el:null};
+const MEL=[ // [midi note or 0 for a rest, length in eighths], 6 eighths a bar
+  [[74,2],[73,1],[71,2],[69,1]],[[67,2],[69,1],[71,3]],[[69,2],[66,1],[62,2],[66,1]],[[69,3],[64,3]],
+  [[74,2],[73,1],[71,2],[69,1]],[[71,2],[74,1],[76,2],[74,1]],[[73,2],[71,1],[69,2],[73,1]],[[74,6]],
+  [[71,2],[74,1],[78,3]],[[79,2],[78,1],[76,3]],[[74,2],[76,1],[78,2],[74,1]],[[76,4],[73,2]],
+  [[78,2],[76,1],[74,2],[71,1]],[[71,2],[74,1],[79,2],[76,1]],[[76,2],[74,1],[73,2],[69,1]],[[74,3],[0,3]]];
+const CHORD=['D','G','D','A','D','G','A','D','Bm','G','D','A','Bm','G','A','D'];
+const CH={D:[50,4,7],G:[43,4,7],A:[45,4,7],Bm:[47,3,7]}; // bass root, third, fifth
+const EIGHTH=60/(58*3); // dotted quarter = 58
+const hz=m=>440*Math.pow(2,(m-69)/12);
+function musBus(c){
+  if(MUS.bus)return MUS.bus;
+  const out=c.createGain();out.gain.value=0;out.connect(c.destination);
+  const dry=c.createGain();dry.gain.value=.8;dry.connect(out);
+  const rev=c.createConvolver();const len=Math.floor(c.sampleRate*2.2),ir=c.createBuffer(2,len,c.sampleRate);
+  for(let ch=0;ch<2;ch++){const d=ir.getChannelData(ch);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3);}
+  rev.buffer=ir;const wet=c.createGain();wet.gain.value=.28;rev.connect(wet).connect(out);
+  const inp=c.createGain();inp.connect(dry);inp.connect(rev);
+  MUS.bus={out,inp};return MUS.bus;
+}
+function pluck(c,m,t,len,vol,bright){ // lute-like plucked string
+  const g=c.createGain(),f=c.createBiquadFilter();f.type='lowpass';f.frequency.setValueAtTime(bright,t);f.frequency.exponentialRampToValueAtTime(600,t+len);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+.006);g.gain.exponentialRampToValueAtTime(.0005,t+len);
+  [['triangle',1,0],['sawtooth',.35,4]].forEach(([ty,v,det])=>{const o=c.createOscillator(),og=c.createGain();o.type=ty;o.frequency.value=hz(m);o.detune.value=det;og.gain.value=v;o.connect(og).connect(f);o.start(t);o.stop(t+len+.05);});
+  f.connect(g).connect(MUS.bus.inp);
+}
+function bassNote(c,m,t,len){const o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.value=hz(m);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.11,t+.02);g.gain.exponentialRampToValueAtTime(.0005,t+len);o.connect(g).connect(MUS.bus.inp);o.start(t);o.stop(t+len+.05);}
+function musSchedule(){
+  const c=SND.ctx;if(!c||!MUS.bus)return;
+  if(MUS.next<c.currentTime)MUS.next=c.currentTime+.1;
+  while(MUS.next<c.currentTime+.7){
+    const bar=Math.floor(MUS.pos/6)%32,e=MUS.pos%6,b16=bar%16,t=MUS.next,[root,third,fifth]=CH[CHORD[b16]];
+    let k=0;for(const[m,d]of MEL[b16]){if(k===e&&m)pluck(c,m,t,Math.min(1.6,d*EIGHTH+.5),.075,2600);k+=d;}
+    if(e===0)bassNote(c,root,t,3*EIGHTH+.3);
+    if(e===3)bassNote(c,root+fifth,t,3*EIGHTH+.3);
+    if(bar>=16){const arp=[0,third,fifth,12,fifth,third];pluck(c,root+24+arp[e],t,.9,.026,1800);}
+    MUS.pos++;MUS.next+=EIGHTH;
+  }
+}
+function musicStart(){
+  if(!MUS.on||document.hidden)return;
+  if(T.music){if(!MUS.el){MUS.el=new Audio(T.music);MUS.el.loop=true;MUS.el.volume=.35;}MUS.el.play().catch(()=>{});return;}
+  const c=actx();if(!c||MUS.timer)return;
+  const b=musBus(c);b.out.gain.cancelScheduledValues(c.currentTime);b.out.gain.setTargetAtTime(1.1,c.currentTime,.6);
+  MUS.next=c.currentTime+.15;musSchedule();MUS.timer=setInterval(musSchedule,120);
+}
+function musicStop(){
+  if(MUS.el)MUS.el.pause();
+  clearInterval(MUS.timer);MUS.timer=null;
+  const c=SND.ctx;if(c&&MUS.bus){MUS.bus.out.gain.cancelScheduledValues(c.currentTime);MUS.bus.out.gain.setTargetAtTime(0,c.currentTime,.25);}
+}
+function setMusic(on){MUS.on=on;lsSet('riverfair-music',on?'on':'off');if(on)musicStart();else musicStop();renderMusicBtn();}
+function renderMusicBtn(){const cm=$('#coMus');if(cm){cm.setAttribute('aria-pressed',String(MUS.on));cm.textContent=`♪ Music ${MUS.on?'on':'off'}`;}
+  const b=$('#musicBtn');if(!b)return;b.setAttribute('aria-pressed',String(MUS.on));b.title=MUS.on?'Music is on':'Music is off';
+  b.innerHTML=`<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M9 17V5l10-2v12" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/><circle cx="6.5" cy="17" r="2.6" fill="currentColor"/><circle cx="16.5" cy="15" r="2.6" fill="currentColor"/>${MUS.on?'':'<path d="M3 3l18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'}</svg><span class="sr">${MUS.on?'Music on':'Music off'}</span>`;}
+addEventListener('pointerdown',()=>{if(MUS.on&&!MUS.timer&&!(MUS.el&&!MUS.el.paused))musicStart();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)musicStop();else musicStart();});
 function setSound(on){SND.on=on;lsSet('riverfair-sound',on?'on':'off');if(on){actx();sfx('coin');}renderSoundBtn();}
 function renderSoundBtn(){const b=$('#soundBtn');b.setAttribute('aria-pressed',String(SND.on));b.title=SND.on?'Sound is on':'Sound is off';b.innerHTML=`<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/>${SND.on?'<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>':'<path d="M16 9l5 6M21 9l-5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'}</svg><span class="sr">${SND.on?'Sound on':'Sound off'}</span>`;}
 
@@ -1812,7 +1873,8 @@ function tutSteps(){
     {when:'move',title:`Welcome to ${T.name}`,text:`You're a hedgehog trader in a busy market town, racing to earn ${W.rubies}. In a two-player game the first to ${winTarget(G)} ends it. This lesson plays the opening turns of a real game against ${rival}. When it's done, the game keeps going and you play it out.`,next:'Show me'},
     {when:'move',spot:tile(7),title:'This is you',text:`Your trader starts at the ${PNAME[7]} with 4 ${W.assistants}. Each turn you move 1 or 2 places (up, down, left or right, never diagonally), then take that place's action.`,next:'Next'},
     {when:'move',only:[2],spot:tile(2),title:'Fill your cart',text:`Head to the ${PNAME[2]}, one step up. Tap it, then tap <b>Move here</b>.`,until:moved},
-    {when:'post',spot:tile(2),title:`${GNAME.r} loaded`,text:`You left 1 ${W.assistant} behind to mind this stall (the little figure on the tile) and filled your ${W.cart} with ${GNAME.r}. It holds 2 of each good for now.`,next:'Next'},
+    {when:'post',spot:tile(2),title:`${GNAME.r} loaded`,text:`You left 1 ${W.assistant} behind to mind this stall. That's the little figure on the tile, and it stays here until you come back for it.`,next:'Next'},
+    {when:'post',spot:['#myStrip .ms-goods','.pl[data-pi="0"] .cart'],title:'Filled to capacity',text:`A store always fills that good all the way to your ${W.cart}'s limit, so it pays to arrive nearly empty. Right now your ${W.cart} holds 2 of each good.</p><p>At ${PNAME[1]} you can pay 7 ${W.cur} for a crate that adds 1 to every limit, up to 5. Your third crate also earns a ${W.ruby}.`,next:'Next'},
     end('That was a full turn',`Move, leave an ${W.assistant}, take the action. ${rival} goes next.`),
     {when:'move',spot:tile(14),title:`${W.tiles[0].toUpperCase()+W.tiles.slice(1)}`,text:`Lodges hand out ${W.tiles} with handy perks. Hold both badges from one lodge and it gives you a ${W.ruby}. The ${PNAME[14]} wants to see 2 ${GNAME.r} for its ${GNAME.r} badge, and you have them.`,next:'Next'},
     {when:'move',only:[14],spot:tile(14),enter:()=>{TUT.dice=[[3,5]];},title:'Pay the locals',text:`A ${W.neutral} is already standing there. When you arrive where other traders are, you pay each of them 2 ${W.cur}, and you have exactly 2. Move to the lodge, then claim the ${GNAME.r} badge.`,until:moved},
@@ -1825,7 +1887,7 @@ function tutSteps(){
     {when:'move',only:[14],spot:tile(14),title:`Earn a ${W.ruby}`,text:`Your ${W.assistant} is still waiting at the lodge, so this time you pick it up instead of leaving another. Move there and claim the ${GNAME.g} badge.`,until:moved},
     {when:'post',spot:['#myStrip .ms-feath','.pl[data-pi="0"] .rubies'],title:`Your first ${W.ruby}`,text:`Both badges from one lodge: that's a ${W.ruby}. The ${GNAME.g} badge also lets you buy 1 extra good for 2 ${W.cur} whenever you fill up at a store.`,next:'Next'},
     end('Nicely done',`${rival} is still hunting for a first ${W.ruby}.`),
-    {when:'move',only:[7],spot:tile(7),title:'Call them home',text:`Two ${W.assistants} are still out at the ${PNAME[2]} and ${PNAME[3]}. The ${PNAME[7]}, 2 steps away, calls all of them back, needs no ${W.assistant} and charges no fees.`,until:moved},
+    {when:'move',only:[7],spot:tile(7),title:'Call them home',text:()=>`Two ${W.assistants} are still out at the ${PNAME[2]} and ${PNAME[3]}. The ${PNAME[7]}, 2 steps away, calls all of them back, needs no ${W.assistant} and charges no fees.${G.players[1].ext?` Notice ${rival} just bought a crate at the ${SHORT[1]}: his ${W.cart} now holds ${cap(G.players[1])} of each good.`:''}`,until:moved},
     end(`All ${W.assistants} home`,`You have all 4 with you again.`),
     {when:'move',only:[11],spot:tile(11),title:'Sell at the market',text:`Markets buy only the goods on their order board. The ${PNAME[11]} wants ${GNAME.r}, ${GNAME.g} and ${GNAME.y}, so sell your ${GNAME.r} and ${GNAME.g}. ${NSC('smug')} the fox smuggler is there too: after your action he offers a good of your choice for 2 ${W.cur} or 1 good.`,until:moved},
     {when:'post',title:'You know the basics',text:`Every turn works this way: move, leave an ${W.assistant}, take the action, deal with whoever is there.</p><p>Other ways to earn ${W.rubies}: deliver goods at the ${PNAME[13]}, buy one at ${PNAME[16]}, add your third crate at ${PNAME[1]}, or take both badges at the ${PNAME[15]}. Your ${W.family} at the ${PNAME[12]} gives a free action anywhere.</p><p>Tap any place to read what it does, and use <b>Suggest</b> when you're stuck. The game is yours now.`,next:'Play on',finish:true}
@@ -1858,14 +1920,15 @@ function tutUpdate(){
   for(const q of sels){const e=document.querySelector(q);if(tutVisible(e)){el=e;break;}}
   if(el)el.classList.add('tut-spot');
   const n=TUT.steps.length;
-  c.innerHTML=`<div class="co-top"><span class="co-step">Lesson · ${TUT.i+1} of ${n}</span><button class="co-skip" id="coSkip">Skip lesson</button></div>
+  c.innerHTML=`<div class="co-top"><span class="co-step">Lesson · ${TUT.i+1} of ${n}</span><span class="co-r"><button class="co-skip co-mus" id="coMus" aria-pressed="${MUS.on}">♪ Music ${MUS.on?'on':'off'}</button><button class="co-skip" id="coSkip">Skip lesson</button></span></div>
     <div class="co-bar"><i style="width:${Math.round(100*(TUT.i+1)/n)}%"></i></div>
-    <h3>${s.title}</h3><p>${s.text}</p>
+    <h3>${s.title}</h3><p>${typeof s.text==='function'?s.text():s.text}</p>
     ${s.next?`<div class="co-btns"><button class="btn primary" id="coNext">${s.next}</button></div>`:`<p class="co-do">${s.end?'Waiting for you to end your turn…':s.only?'Waiting for your move…':'Waiting for you…'}</p>`}`;
   c.hidden=false;
   const r=el?el.getBoundingClientRect():null;
   c.classList.toggle('at-top',!!r&&(r.top+r.height/2)>innerHeight*.52);
   if(el&&TUT.scroll){TUT.scroll=false;const top=r.top<70,low=r.bottom>innerHeight-(c.offsetHeight+40);if(top||low)el.scrollIntoView({behavior:REDUCED?'auto':'smooth',block:'center'});}
+  $('#coMus').onclick=()=>{setMusic(!MUS.on);render();};
   $('#coSkip').onclick=()=>{tutStop();toast('Lesson skipped. Keep playing, or open the Menu.');render();};
   const nb=$('#coNext');if(nb)nb.onclick=()=>{if(s.finish){tutStop();render();return;}TUT.i++;render();};
 }
@@ -1874,13 +1937,14 @@ function tutUpdate(){
 $('#newBtn').onclick=goHome;
 $('#rulesBtn').onclick=rulesSheet;
 $('#soundBtn').onclick=()=>setSound(!SND.on);
+$('#musicBtn').onclick=()=>setMusic(!MUS.on);
 $('#codeChip').onclick=()=>copyText(shareLink(ON.code));
 (function boot(){
   if(T.fonts){if(T.fonts.link){const l=document.createElement('link');l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family='+T.fonts.link+'&display=swap';document.head.appendChild(l);}
     if(T.fonts.display)document.documentElement.style.setProperty('--f-display',T.fonts.display);
     if(T.fonts.tile)document.documentElement.style.setProperty('--f-tile',T.fonts.tile);}
   document.title=T.name;$('#brandName').textContent=T.name;$('#footText').textContent=T.foot;
-  renderSoundBtn();
+  renderSoundBtn();renderMusicBtn();
   document.body.classList.add('t-'+T.id);
   initTips();
   const fe=ICON('feather');
